@@ -1,0 +1,23 @@
+# 本机 git 环境适配文件（SteamTools 中间人根证书合并包），不提交
+.git-trust/
+
+# 依赖
+node_modules/
+vendor/
+
+# 构建产物
+dist/
+build/
+out/
+*.log
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 环境变量与密钥
+.env
+.env.local
+*.pem
