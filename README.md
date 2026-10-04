@@ -1,8 +1,12 @@
-# 传智杯 Web 项目
+# chuangzhibei
 
-本目录为传智杯 Web 方向的开发项目。
+传智杯 Web 方向的开发项目。
 
-## 环境说明（本机）
+## 文档
+
+- [多人协作说明](docs/collaboration.md) — 邀请协作者、保护 `main`、分支/PR 流程、令牌与 SSH 配置
+
+## 本机环境说明（仅 owner 本机适用，协作者请忽略）
 
 本机安装了 SteamTools（Watt Toolkit）加速器，它会在本机 443 端口做 TLS 中间人，
 用自签发的 `SteamTools Certificate` 重新签发 github.com 等域名的证书。
@@ -23,9 +27,13 @@
 > 换到其它机器或不再使用加速器时，可执行
 > `git config --unset http.sslBackend` 与 `git config --unset http.sslCAInfo` 恢复默认。
 
-## 使用
+## 快速开始
 
 ```bash
-git remote add origin <仓库地址>
-git push -u origin main
+git clone https://github.com/m-tx25/chuangzhibei.git
+cd chuangzhibei
+git config user.name "你的名字"
+git config user.email "你的邮箱"
 ```
+
+详细流程见 [多人协作说明](docs/collaboration.md)。
