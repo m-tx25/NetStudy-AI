@@ -2,6 +2,11 @@
 
 传智杯 Web 方向的开发项目，前后端分离。
 
+## 文档
+
+- [开发报告](docs/development-report.md) — 已完成工作、技术选型、验证记录、已知问题与下一步计划
+- [多人协作说明](docs/collaboration.md) — 邀请协作者、保护 `main`、分支/PR 流程、令牌与 SSH 配置
+
 ## 项目结构
 
 ```
