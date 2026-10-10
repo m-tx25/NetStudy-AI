@@ -1,0 +1,18 @@
+{
+  "name": "chuangzhibei",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.7.0",
+  "description": "传智杯 Web 方向参赛项目：Vue 3 + Vite 前端 / Express 后端",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "dev:client": "pnpm --filter client dev",
+    "dev:server": "pnpm --filter server dev",
+    "build": "pnpm --filter client build",
+    "preview": "pnpm --filter client preview"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  }
+}
