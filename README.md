@@ -67,6 +67,67 @@ npm run dev
 | `server/` | `npm run dev` | 启动后端（nodemon 热重载） |
 | `server/` | `npm start` | 启动后端（生产模式） |
 
+## 环境适配与自检（本机已配置，协作者可选）
+
+本机在受限环境（DSH）下安装依赖与启动开发服务器时，遇到过两个 `EPERM` 问题。
+两处适配都已落地，**普通 Windows / macOS / Linux 环境下无需这些步骤即可正常开发**。
+
+### 1. 依赖缓存 `client/.npmrc`、`server/.npmrc`
+
+npm 默认缓存目录在用户目录 `C:\Users\<user>\AppData\Local\npm-cache`，受限环境下
+该路径不可写，`npm install` 会直接报 `EPERM`。两个包内各放了一份 `.npmrc`：
+
+```ini
+cache=.npm-cache
+```
+
+相对路径会解析到**包目录内部**（如 `client/.npm-cache`），项目因此自包含。
+该目录已被根 `.gitignore` 忽略，不会提交。
+
+### 2. Vite 的 `spawn EPERM` —— `scripts/patch-vite-windows.mjs`
+
+Windows 下 Vite 会执行一次 `exec("net use")` 探测网络驱动器映射；该调用使用管道式
+stdio，在禁止命名管道的受限环境中必然抛 `spawn EPERM`，并被 rolldown 当作致命错误，
+导致 `vite` / `vite build` 失败（报错栈指向 `optimizeSafeRealPathSync`）。
+
+若遇到该报错，执行：
+
+```bash
+cd client
+node ../scripts/patch-vite-windows.mjs           # 应用补丁
+node ../scripts/patch-vite-windows.mjs --dry-run # 只检查、不写入
+```
+
+脚本幂等，会自行定位 `client/node_modules` 下的 Vite 产物；对本机本地磁盘而言
+与原始行为完全等价（`windowsNetworkMap` 本为空），不改变构建产物。
+**注意：`node_modules` 被删除重装后需要重新执行一次。**
+
+> 该补丁没有挂到 `postinstall`：避免在协作者（可能是 macOS/Linux）的机器上因
+> 版本差异导致 `npm install` 整体失败。需要时手动执行即可。
+
+### 3. 后端热重载在受限环境下不可用
+
+`server` 的 `npm run dev` 用 nodemon，其依赖 `pstree.remy` 在导入时会 spawn 一个
+带管道 stdio 的子进程，在受限环境下启动即崩（`spawn EPERM`）。此时改用：
+
+```bash
+cd server
+node src/index.js     # 等价于 npm start，无热重载，但服务功能完全正常
+```
+
+在普通环境下 `npm run dev` 可正常使用，无需此替代。
+
+### 4. 连通性自检
+
+前后端起来后，可一键验证链路（不依赖浏览器）：
+
+```bash
+node scripts/verify-connectivity.mjs
+```
+
+它会检查：后端直连、前端首页、**经 5173 代理访问后端**、SFC 编译、后端 404 处理。
+全部通过即表示前后端已打通。
+
 ## 协作
 
 分支与 PR 流程见 [docs/collaboration.md](docs/collaboration.md)。简单说：**不要直推 `main`**（已受保护），在 `dec/test-upload` 或自己的功能分支上开发。
