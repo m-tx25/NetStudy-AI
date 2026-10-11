@@ -20,4 +20,16 @@ Thumbs.db
 # 环境变量与密钥
 .env
 .env.local
+.env.*.local
 *.pem
+
+# 依赖锁文件保留（package-lock.json / pnpm-lock.yaml 应提交）
+
+# 临时 / 本地数据
+*.tmp
+*.local
+coverage/
+.cache/
+
+# npm 本地缓存（本机安装依赖时指定在工作区内）
+.npm-cache/
