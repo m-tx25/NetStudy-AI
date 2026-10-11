@@ -1,0 +1,55 @@
+# MySQL 本地开发环境（一键启动）
+#
+# 用法：
+#   docker compose up -d mysql      # 启动
+#   docker compose logs -f mysql    # 看日志
+#   docker compose down             # 停止（数据保留在 volume 中）
+#   docker compose down -v          # 停止并删除数据
+#
+# 启动后把 server/.env 的 MYSQL_PASSWORD 改成下面 MYSQL_ROOT_PASSWORD 的值即可。
+# 本机没有 Docker 时，请自行安装 MySQL 8（见 README 的说明）。
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: chuangzhibei-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: chuangzhibei
+      MYSQL_DATABASE: chuangzhibei
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      # 中文全文与 emoji 都需要 utf8mb4
+      - --default-authentication-plugin=caching_sha2_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-pchuangzhibei"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # 可选的 Redis：用于 Celery 异步队列。
+  # 不启动也能开发（把 server/.env 的 CELERY_TASK_ALWAYS_EAGER 设为 true）。
+  redis:
+    image: redis:7-alpine
+    container_name: chuangzhibei-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  mysql-data:
+  redis-data:

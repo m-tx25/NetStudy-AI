@@ -3,7 +3,7 @@
 传智杯 Web 方向的开发项目，前后端分离。
 
 - **前端**：Vue 3 + Vite + TailwindCSS + Element Plus（单页应用，SSE 流式问答）
-- **后端**：Node.js + Express
+- **后端**：Python + FastAPI（JWT 鉴权、Celery + Redis 异步任务、RAG 核心引擎）
 
 ## 功能概览
 
@@ -47,9 +47,21 @@
 │       ├── composables/        主题、打字机、侧边栏、协议弹窗
 │       ├── utils/              SSE、Markdown、格式化、剪贴板、密码强度
 │       └── views/              登录 / 注册 / 问答 / 知识库 / 账号设置 / 404
-├── server/                     后端：Node.js + Express
-│   ├── .env.example            环境变量模板
-│   └── src/index.js            入口，含 /api/health 健康检查
+├── server/                     后端：Python + FastAPI（详见 server/README.md）
+│   ├── app/
+│   │   ├── main.py             入口、CORS、统一错误处理
+│   │   ├── models.py           ORM：用户/知识库/文档/切片/会话/消息/引用
+│   │   ├── schemas.py          对外契约（camelCase，与前端 mock.js 对齐）
+│   │   ├── tasks.py            Celery 应用与异步任务
+│   │   ├── api/                auth / conversations / knowledge_bases / documents / chat / health
+│   │   ├── core/               配置、数据库、JWT 与密码哈希
+│   │   ├── rag/                RAG 引擎编排与 Prompt 模板
+│   │   ├── services/           解析、切片、向量化、检索、大模型、处理流水线
+│   │   └── db/seed.py          演示数据（与前端 mock 内容一致）
+│   ├── data/                   SQLite 与上传文件（运行时生成，不入版本库）
+│   ├── requirements.txt
+│   ├── start.ps1               一键启动（自动建 venv、装依赖、生成 .env）
+│   └── .env.example            环境变量模板
 ├── docs/
 │   ├── development-report.md
 │   ├── frontend-api.md
@@ -63,7 +75,15 @@
 ## 环境要求
 
 - Node.js **≥ 20.19**（推荐 22 / 24 LTS，Vite 8 的最低要求）
-- 包管理器：**npm**（请勿使用 pnpm / yarn，以免生成冲突的锁文件）
+- 包管理器：**npm**（前端；请勿使用 pnpm / yarn，以免生成冲突的锁文件）
+- Python **≥ 3.11**（后端；推荐 3.12 / 3.14）
+- **MySQL 8.0+（后端必需）**：业务数据存储。库不存在时会自动创建
+- **智谱 API Key（向量化必需）**：申请 <https://open.bigmodel.cn/>
+- Redis（可选）：仅 Celery 异步队列需要；未安装时可让任务在进程内同步执行
+- Docker（可选）：可用 `server/docker-compose.yml` 一键起 MySQL + Redis
+
+> 向量库是 **ChromaDB**，纯 Python 实现，无需额外安装服务；
+> 数据落在 `server/data/chroma_db/`。
 
 ## 安装
 
@@ -72,24 +92,49 @@
 cd client
 npm install
 
-# 后端
+# 后端（Python，会自动创建 server/.venv 并安装依赖）
 cd ../server
-npm install
+.\start.ps1          # Windows；脚本会建虚拟环境、装依赖、生成 .env
 ```
 
-根目录的 `package.json` 只是**便捷入口**（用 `npm --prefix` 转发），也可以直接在
-根目录执行：
+### 准备 MySQL
+
+```powershell
+# 方式一：Docker（推荐，一并起 Redis）
+cd server
+docker compose up -d mysql redis
+
+# 方式二：官方 Windows 安装包
+#   https://dev.mysql.com/downloads/installer/
+# 方式三：已有 MySQL 实例，直接改 server/.env 的 MYSQL_* 即可
+```
+
+然后把 `server/.env` 里的 `MYSQL_PASSWORD` 与 `ZHIPUAI_API_KEY` 填好。
+
+后端也可手动安装：
 
 ```bash
-npm run install:all     # 一次装好 client 与 server
+cd server
+python -m venv .venv
+.venv/Scripts/python -m pip install -r requirements.txt
+cp .env.example .env
 ```
+
+根目录的 `package.json` 是**前端便捷入口**（用 `npm --prefix` 转发）：
+
+```bash
+npm run install:client   # 安装前端依赖
+```
+
+> 后端的依赖与启动统一由 `server/` 目录管理（Python 生态），
+> 详细说明见 [server/README.md](server/README.md)。
 
 ## 启动开发环境（需要两个终端）
 
 ```bash
 # 终端 1：后端，http://localhost:3000
 cd server
-npm start            # 受限环境下用这个；普通环境可用 npm run dev（nodemon 热重载）
+.\start.ps1                       # 自动建 venv / 装依赖 / 启动（含热重载）
 
 # 终端 2：前端，http://localhost:5173
 cd client
@@ -99,40 +144,59 @@ npm run dev
 打开 <http://localhost:5173>，Mock 模式下登录页已预填 `demo / 123456`，直接点「登录」
 或「一键体验演示账号」即可看到完整问答流程。
 
+### 接入真实后端
+
+前端默认跑在 Mock 模式，不会请求后端。要联调真实接口，编辑 `client/.env.development`：
+
+```ini
+VITE_USE_MOCK=false
+```
+
+改完**重启前端 dev server** 生效。演示账号 `demo / 123456` 在后端首次启动时自动创建，
+数据与 Mock 内容一致，因此切换后界面看到的仍是同一套知识库与文档。
+
+> 想真正生成回答还需在 `server/.env` 填入 `LLM_API_KEY`；
+> 未填写时检索与引用溯源正常工作，生成阶段会返回可读的错误提示。
+
 ## 常用命令
 
 | 位置 | 命令 | 说明 |
 | --- | --- | --- |
-| 根目录 | `npm run install:all` | 安装前后端依赖 |
-| 根目录 | `npm run dev:client` / `npm run dev:server` | 只启动前端 / 后端 |
+| 根目录 | `npm run install:client` | 安装前端依赖 |
+| 根目录 | `npm run dev:client` | 只启动前端 |
 | 根目录 | `npm run build` | 构建前端到 `client/dist` |
+| 根目录 | `npm run check:server` | 后端接口契约自检（需后端已启动） |
 | `client/` | `npm run dev` | 启动前端开发服务器 |
 | `client/` | `npm run build` | 构建生产包到 `client/dist` |
 | `client/` | `npm run preview` | 预览构建结果 |
 | `client/` | `npm run check:build` | 检查构建产物（Tailwind 工具类、主题色覆盖） |
 | `client/` | `npm run check:e2e` | 无头浏览器端到端自检（需先启动 `npm run dev`） |
 | `client/` | `npm run screenshots` | 重新生成 `docs/screenshots` 下的截图 |
-| `server/` | `npm run dev` | 启动后端（nodemon 热重载） |
-| `server/` | `npm start` | 启动后端（生产模式） |
+| `server/` | `.\start.ps1` | 启动后端（自动建 venv、装依赖、热重载） |
+| `server/` | `.\.venv\Scripts\python -m celery -A app.tasks.celery_app worker -l info` | 启动异步 worker（需 Redis） |
+| `server/` | `.\start.ps1 -Port 8000` | 指定端口启动 |
 
 ## 开发约定
 
 - **接口统一走 `/api/**` 相对路径**，不要写死 `http://localhost:3000`。
   开发期由 Vite 代理转发（见 `client/vite.config.js`），既免跨域，上线换域名也不用改代码。
-- 后端端口用环境变量覆盖：`PORT=4000 npm start`（默认 3000）。
+- 后端端口在 `server/.env` 里改（`PORT=4000`）。
   改了后端端口，记得同步改 `client/vite.config.js` 里的 `proxy.target`。
 - `@` 已别名到 `client/src`，import 可以写 `@/components/xxx.vue`。
-- 新增后端路由建议拆到 `server/src/routes/` 下再挂载，别都堆在 `index.js`。
+- 后端新增接口请拆到 `server/app/api/` 下再注册（见 `server/app/main.py` 的路由注册段），
+  不要都堆在单文件里；对外字段一律用 camelCase，与前端契约保持一致。
+- 后端字段名必须与 `client/src/api/mock.js` 对齐 —— 那是当前唯一的接口契约来源，
+  也是 `npm run check:server` 的核对基准。
 
 ## 环境适配与自检（本机已配置，协作者可选）
 
 本机在受限环境（DSH）下安装依赖与启动开发服务器时，遇到过两个 `EPERM` 问题。
 两处适配都已落地，**普通 Windows / macOS / Linux 环境下无需这些步骤即可正常开发**。
 
-### 1. 依赖缓存 `client/.npmrc`、`server/.npmrc`
+### 1. 依赖缓存 `client/.npmrc`
 
 npm 默认缓存目录在用户目录 `C:\Users\<user>\AppData\Local\npm-cache`，受限环境下
-该路径不可写，`npm install` 会直接报 `EPERM`。两个包内各放了一份 `.npmrc`：
+该路径不可写，`npm install` 会直接报 `EPERM`。前端包内放了一份 `.npmrc`：
 
 ```ini
 cache=.npm-cache
