@@ -1,20 +1,31 @@
 {
   "name": "chuangzhibei-client",
-  "private": true,
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check:build": "node scripts/check-build.mjs",
+    "check:e2e": "node scripts/e2e-check.mjs",
+    "screenshots": "node scripts/capture-screenshots.mjs"
   },
   "dependencies": {
+    "@element-plus/icons-vue": "^2.3.1",
+    "axios": "^1.7.9",
+    "element-plus": "^2.9.3",
+    "highlight.js": "^11.11.1",
+    "markdown-it": "^14.1.0",
+    "pinia": "^3.0.3",
     "vue": "^3.5.43",
-    "vue-router": "^5.4.0",
-    "pinia": "^4.0.3"
+    "vue-router": "^4.5.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.9",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
     "vite": "^8.3.4"
   }
 }
