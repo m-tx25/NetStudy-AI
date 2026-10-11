@@ -2,9 +2,29 @@
 
 传智杯 Web 方向的开发项目，前后端分离。
 
+- **前端**：Vue 3 + Vite + TailwindCSS + Element Plus（单页应用，SSE 流式问答）
+- **后端**：Node.js + Express
+
+## 功能概览
+
+| 模块 | 说明 |
+| --- | --- |
+| 登录 / 注册 | 表单校验、登录守卫、记住账号、忘记密码、服务协议与隐私政策 |
+| 智能问答 | ChatGPT 风格对话界面，SSE 流式返回 + 打字机效果，可随时停止生成 |
+| 引用溯源 | 每条回答列出引用的原文片段（文档名、页码、相关度），可点开核对 |
+| 知识库管理 | 知识库 CRUD、拖拽多文件上传、解析状态、参与检索开关、重新索引 |
+| 账号设置 | 修改昵称 / 用户名 / 邮箱，修改密码（校验当前密码，支持强制重新登录） |
+| 其他 | 明暗主题、会话分组与重命名、检索范围与 Top-K 参数、移动端自适应 |
+
+> 前端默认跑在 **Mock 演示模式**（`client/.env.development` 里 `VITE_USE_MOCK=true`），
+> 没有后端也能完整体验全部交互。接真实后端时把它改成 `false` 并重启 dev server。
+> 后端目前只实现了 `/api/health`，业务接口清单见 [前端接口约定](docs/frontend-api.md)。
+
 ## 文档
 
 - [开发报告](docs/development-report.md) — 已完成工作、技术选型、验证记录、已知问题与下一步计划
+- [前端接口与 SSE 协议约定](docs/frontend-api.md) — REST 接口、`text/event-stream` 事件格式、数据模型
+- [前端说明](client/README.md) — 目录结构、功能清单、自检脚本、界面截图
 - [多人协作说明](docs/collaboration.md) — 邀请协作者、保护 `main`、分支/PR 流程、令牌与 SSH 配置
 - [RAG 检索模块](rag/README.md) — PDF 切片、向量化入 ChromaDB、检索验证（Python，与主项目独立）
 
@@ -12,30 +32,42 @@
 
 ```
 .
-├── client/                 前端：Vue 3 + Vite
+├── client/                     前端：Vue 3 + Vite
 │   ├── index.html
-│   ├── vite.config.js      开发时把 /api 代理到后端，避免跨域
+│   ├── vite.config.js          含 @ 别名、/api 代理、内联 PostCSS(Tailwind)
+│   ├── tailwind.config.js
+│   ├── .env.development        VITE_USE_MOCK / VITE_API_BASE_URL
+│   ├── scripts/                自检脚本（构建产物检查 / 端到端 / 截图）
 │   └── src/
-│       ├── main.js         入口
-│       ├── App.vue         根组件
-│       ├── assets/         样式与静态资源
-│       ├── router/         路由
-│       ├── stores/         Pinia 状态
-│       └── views/          页面
-├── server/                 后端：Node.js + Express
-│   ├── .env.example        环境变量模板
-│   └── src/index.js        入口，含 /api/health 健康检查
-├── rag/                    RAG 检索模块（Python，独立）
-│   ├── build_db.py         PDF → 切片 → 向量化 → ChromaDB
-│   └── query_db.py         检索验证
-└── scripts/                环境适配与自检脚本
-    ├── patch-vite-windows.mjs  修复 Vite 的 spawn EPERM（Windows 受限环境）
+│       ├── main.js             入口：Pinia / Router / Element Plus / 主题
+│       ├── api/                Axios 封装、SSE 解析、Mock 数据
+│       ├── stores/             Pinia：user / chat / knowledge
+│       ├── router/             路由表与登录守卫
+│       ├── layouts/            AppLayout（侧边栏+主区）、AuthShell（登录注册）
+│       ├── components/         chat / knowledge / auth / layout 组件
+│       ├── composables/        主题、打字机、侧边栏、协议弹窗
+│       ├── utils/              SSE、Markdown、格式化、剪贴板、密码强度
+│       └── views/              登录 / 注册 / 问答 / 知识库 / 账号设置 / 404
+├── server/                     后端：Node.js + Express
+│   ├── .env.example            环境变量模板
+│   └── src/index.js            入口，含 /api/health 健康检查
+├── rag/                        RAG 检索模块（Python，与主项目独立）
+│   ├── build_db.py             PDF → 切片 → 向量化 → ChromaDB
+│   ├── query_db.py             检索验证（支持混合检索）
+│   └── README.md               使用说明
+├── docs/
+│   ├── development-report.md
+│   ├── frontend-api.md
+│   ├── collaboration.md
+│   └── screenshots/            界面截图
+└── scripts/
+    ├── patch-vite-windows.mjs  规避受限环境下 Vite 的 spawn EPERM
     └── verify-connectivity.mjs 前后端连通性自检
 ```
 
 ## 环境要求
 
-- Node.js ≥ 20（本机实测 v24.19）
+- Node.js **≥ 20.19**（推荐 22 / 24 LTS，Vite 8 的最低要求）
 - 包管理器：**npm**（请勿使用 pnpm / yarn，以免生成冲突的锁文件）
 
 ## 安装
@@ -50,29 +82,52 @@ cd ../server
 npm install
 ```
 
+根目录的 `package.json` 只是**便捷入口**（用 `npm --prefix` 转发），也可以直接在
+根目录执行：
+
+```bash
+npm run install:all     # 一次装好 client 与 server
+```
+
 ## 启动开发环境（需要两个终端）
 
 ```bash
 # 终端 1：后端，http://localhost:3000
 cd server
-npm run dev
+npm start            # 受限环境下用这个；普通环境可用 npm run dev（nodemon 热重载）
 
 # 终端 2：前端，http://localhost:5173
 cd client
 npm run dev
 ```
 
-打开 <http://localhost:5173>，首页会显示"后端连接正常"表示前后端已打通。
+打开 <http://localhost:5173>，Mock 模式下登录页已预填 `demo / 123456`，直接点「登录」
+或「一键体验演示账号」即可看到完整问答流程。
 
 ## 常用命令
 
 | 位置 | 命令 | 说明 |
 | --- | --- | --- |
+| 根目录 | `npm run install:all` | 安装前后端依赖 |
+| 根目录 | `npm run dev:client` / `npm run dev:server` | 只启动前端 / 后端 |
+| 根目录 | `npm run build` | 构建前端到 `client/dist` |
 | `client/` | `npm run dev` | 启动前端开发服务器 |
 | `client/` | `npm run build` | 构建生产包到 `client/dist` |
 | `client/` | `npm run preview` | 预览构建结果 |
+| `client/` | `npm run check:build` | 检查构建产物（Tailwind 工具类、主题色覆盖） |
+| `client/` | `npm run check:e2e` | 无头浏览器端到端自检（需先启动 `npm run dev`） |
+| `client/` | `npm run screenshots` | 重新生成 `docs/screenshots` 下的截图 |
 | `server/` | `npm run dev` | 启动后端（nodemon 热重载） |
 | `server/` | `npm start` | 启动后端（生产模式） |
+
+## 开发约定
+
+- **接口统一走 `/api/**` 相对路径**，不要写死 `http://localhost:3000`。
+  开发期由 Vite 代理转发（见 `client/vite.config.js`），既免跨域，上线换域名也不用改代码。
+- 后端端口用环境变量覆盖：`PORT=4000 npm start`（默认 3000）。
+  改了后端端口，记得同步改 `client/vite.config.js` 里的 `proxy.target`。
+- `@` 已别名到 `client/src`，import 可以写 `@/components/xxx.vue`。
+- 新增后端路由建议拆到 `server/src/routes/` 下再挂载，别都堆在 `index.js`。
 
 ## 环境适配与自检（本机已配置，协作者可选）
 
@@ -139,6 +194,8 @@ node scripts/verify-connectivity.mjs
 
 分支与 PR 流程见 [docs/collaboration.md](docs/collaboration.md)。简单说：**不要直推 `main`**（已受保护），在 `dec/test-upload` 或自己的功能分支上开发。
 
+---
+
 ## 本机环境说明（仅 owner 本机适用，协作者请忽略）
 
 本机安装了 SteamTools（Watt Toolkit）加速器，它会在本机 443 端口做 TLS 中间人，
@@ -159,3 +216,7 @@ node scripts/verify-connectivity.mjs
 
 > 换到其它机器或不再使用加速器时，可执行
 > `git config --unset http.sslBackend` 与 `git config --unset http.sslCAInfo` 恢复默认。
+
+> npm 侧不受影响：Node 自带独立的 CA 根证书列表，实测 `registry.npmjs.org` 可正常访问。
+> 若日后出现 `UNABLE_TO_VERIFY_LEAF_SIGNATURE`，可设
+> `NODE_EXTRA_CA_CERTS=<本仓库>/.git-trust/ca-bundle-plus-steamtools.pem`。

@@ -1,0 +1,20 @@
+{
+  "name": "chuangzhibei",
+  "private": true,
+  "version": "0.1.0",
+  "description": "传智杯 Web 方向参赛项目：Vue 3 + Vite 前端 / Express 后端（RAG 知识问答系统）",
+  "type": "module",
+  "scripts": {
+    "install:all": "npm --prefix client install && npm --prefix server install",
+    "dev:client": "npm --prefix client run dev",
+    "dev:server": "npm --prefix server run start",
+    "build": "npm --prefix client run build",
+    "preview": "npm --prefix client run preview",
+    "check:build": "npm --prefix client run check:build",
+    "check:e2e": "npm --prefix client run check:e2e",
+    "screenshots": "npm --prefix client run screenshots"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  }
+}

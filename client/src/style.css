@@ -1,0 +1,323 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==========================================================================
+   1. 设计令牌 & Element Plus 主题变量覆盖
+   ========================================================================== */
+@layer base {
+  /* 注意：Element Plus 的 dark/css-vars.css 用 `html.dark`(0,1,1) 写死了
+     --el-color-primary，这里必须同样带上 html.dark 才能让品牌色在深色模式下生效 */
+  :root,
+  html.dark {
+    --app-sidebar: #f9f9f9;
+    --app-sidebar-hover: #ececec;
+    --app-sidebar-active: #e3e3e3;
+    --app-canvas: #ffffff;
+    --app-border: #e5e5e5;
+    --app-text: #0d0d0d;
+    --app-text-muted: #6b6b6b;
+
+    /* Element Plus 主色改为 RAG 主题绿（ChatGPT 风），保持全局一致 */
+    --el-color-primary: #10a37f;
+    --el-color-primary-light-3: #4bbda1;
+    --el-color-primary-light-5: #87d3c0;
+    --el-color-primary-light-7: #b6e5d9;
+    --el-color-primary-light-8: #ceeee5;
+    --el-color-primary-light-9: #e7f6f2;
+    --el-color-primary-dark-2: #0d8266;
+    --el-border-radius-base: 8px;
+    --el-font-family: inherit;
+  }
+
+  html.dark {
+    --app-sidebar: #171717;
+    --app-sidebar-hover: #2f2f2f;
+    --app-sidebar-active: #3a3a3a;
+    --app-canvas: #212121;
+    --app-border: #3a3a3a;
+    --app-text: #ececec;
+    --app-text-muted: #a0a0a0;
+  }
+
+  html,
+  body,
+  #app {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+      'Hiragino Sans GB', 'Microsoft YaHei', Roboto, Helvetica, Arial, sans-serif;
+    color: var(--app-text);
+    background-color: var(--app-canvas);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Tailwind preflight 会把 ul/ol 变成无样式，这里为正文区恢复 */
+  .markdown-body ul {
+    list-style: disc;
+  }
+
+  .markdown-body ol {
+    list-style: decimal;
+  }
+}
+
+/* ==========================================================================
+   2. 滚动条：细、低调，跟 ChatGPT 接近
+   ========================================================================== */
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(120, 120, 120, 0.45) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: rgba(120, 120, 120, 0.4);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  .scrollbar-thin:hover::-webkit-scrollbar-thumb {
+    background-color: rgba(120, 120, 120, 0.65);
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* ==========================================================================
+   3. Markdown 正文（助手回答）样式
+   ========================================================================== */
+.markdown-body {
+  font-size: 0.9375rem;
+  line-height: 1.75;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.markdown-body > *:first-child {
+  margin-top: 0;
+}
+
+.markdown-body > *:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body p {
+  margin: 0.75em 0;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4 {
+  margin: 1.4em 0 0.6em;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.markdown-body h1 {
+  font-size: 1.4em;
+}
+
+.markdown-body h2 {
+  font-size: 1.25em;
+  padding-bottom: 0.25em;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.markdown-body h3 {
+  font-size: 1.1em;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  margin: 0.75em 0;
+  padding-left: 1.5em;
+}
+
+.markdown-body li {
+  margin: 0.3em 0;
+}
+
+.markdown-body li > p {
+  margin: 0.25em 0;
+}
+
+.markdown-body a {
+  color: var(--el-color-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdown-body blockquote {
+  margin: 0.9em 0;
+  padding: 0.35em 0 0.35em 1em;
+  border-left: 3px solid var(--el-color-primary);
+  color: var(--app-text-muted);
+  background: rgba(127, 127, 127, 0.06);
+  border-radius: 0 6px 6px 0;
+}
+
+.markdown-body hr {
+  margin: 1.5em 0;
+  border: none;
+  border-top: 1px solid var(--app-border);
+}
+
+.markdown-body strong {
+  font-weight: 600;
+}
+
+.markdown-body code:not(pre code) {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.86em;
+  padding: 0.15em 0.4em;
+  border-radius: 5px;
+  background: rgba(127, 127, 127, 0.16);
+}
+
+.markdown-body table {
+  width: 100%;
+  margin: 1em 0;
+  border-collapse: collapse;
+  font-size: 0.9em;
+  display: block;
+  overflow-x: auto;
+}
+
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid var(--app-border);
+  padding: 0.5em 0.75em;
+  text-align: left;
+}
+
+.markdown-body th {
+  background: rgba(127, 127, 127, 0.1);
+  font-weight: 600;
+}
+
+/* 代码块 + 复制按钮（由 utils/markdown.js 生成结构） */
+.markdown-body .code-block {
+  margin: 1em 0;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--app-border);
+  background: #0d1117;
+}
+
+.markdown-body .code-block__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.75rem;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  color: #9aa4b2;
+  background: #161b22;
+  border-bottom: 1px solid #21262d;
+}
+
+.markdown-body .code-block__copy {
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: #9aa4b2;
+  font: inherit;
+  padding: 0.1rem 0.35rem;
+  border-radius: 5px;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.markdown-body .code-block__copy:hover {
+  color: #e6edf3;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.markdown-body .code-block pre {
+  margin: 0;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.83rem;
+  line-height: 1.6;
+  color: #e6edf3;
+}
+
+/* 打字机光标：跟在 markdown 最后一个块级元素的内容末尾 */
+.markdown-body.is-streaming > *:last-child::after {
+  content: '';
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background-color: currentColor;
+  border-radius: 1px;
+  animation: caret-blink 1s steps(1) infinite;
+}
+
+.typing-caret::after {
+  content: '';
+  display: inline-block;
+  width: 0.5em;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background-color: currentColor;
+  border-radius: 1px;
+  animation: caret-blink 1s steps(1) infinite;
+}
+
+@keyframes caret-blink {
+  0%,
+  70%,
+  100% {
+    opacity: 1;
+  }
+  20%,
+  50% {
+    opacity: 0;
+  }
+}
+
+/* ==========================================================================
+   4. Element Plus 细节调优
+   ========================================================================== */
+.el-message {
+  border-radius: 10px;
+}
+
+.el-dialog {
+  border-radius: 14px;
+}
+
+.el-drawer__body {
+  padding: 0;
+}
+
+.el-table {
+  --el-table-border-color: var(--app-border);
+  --el-table-header-bg-color: rgba(127, 127, 127, 0.06);
+  --el-table-row-hover-bg-color: rgba(16, 163, 127, 0.07);
+}
+
+.el-menu {
+  border-right: none !important;
+}
