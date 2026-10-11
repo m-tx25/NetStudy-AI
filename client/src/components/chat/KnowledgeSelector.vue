@@ -42,15 +42,15 @@ function resetParams() {
         class="flex h-9 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition"
         :class="
           selectedIds.length
-            ? 'border-brand/40 bg-brand/10 text-brand'
-            : 'border-[#e5e5e5] text-[#5d5d5d] hover:bg-black/5 dark:border-[#3a3a3a] dark:text-[#b4b4b4] dark:hover:bg-white/10'
+            ? 'app-accent-soft border-brand-light/40'
+            : 'app-border app-muted app-hover hover-app-text'
         "
       >
         <el-icon :size="14"><Collection /></el-icon>
         <span>知识库</span>
         <span
           v-if="selectedIds.length"
-          class="rounded-full bg-brand px-1.5 text-[10px] font-semibold leading-4 text-white"
+          class="rounded-full bg-brand-light px-1.5 text-[10px] font-semibold leading-4 text-[#04140f]"
         >
           {{ selectedIds.length }}
         </span>
@@ -59,21 +59,21 @@ function resetParams() {
 
     <div class="space-y-3">
       <div class="flex items-center justify-between">
-        <p class="text-sm font-medium text-[#0d0d0d] dark:text-[#ececec]">检索范围</p>
+        <p class="text-sm font-medium app-text">检索范围</p>
         <button
           v-if="bases.length"
-          class="text-xs text-brand underline-offset-2 hover:underline"
+          class="text-xs app-accent underline-offset-2 hover:underline"
           @click="selectAll"
         >
           {{ allSelected ? '清空' : '全选' }}
         </button>
       </div>
 
-      <div v-if="knowledgeStore.basesLoading" class="py-4 text-center text-xs text-[#8e8e8e]">
+      <div v-if="knowledgeStore.basesLoading" class="py-4 text-center text-xs app-muted">
         加载中…
       </div>
 
-      <div v-else-if="!bases.length" class="rounded-lg bg-amber-50 p-3 text-xs text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+      <div v-else-if="!bases.length" class="rounded-lg bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-300">
         还没有知识库，先去创建一个吧。
       </div>
 
@@ -81,7 +81,7 @@ function resetParams() {
         <div
           v-for="base in bases"
           :key="base.id"
-          class="flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 transition hover:bg-black/5 dark:hover:bg-white/10"
+          class="flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 transition app-hover"
           @click="toggle(base.id)"
         >
           <!-- 点击由外层容器统一处理，避免 label 嵌套导致的双向切换 -->
@@ -91,10 +91,10 @@ function resetParams() {
             tabindex="-1"
           />
           <span class="min-w-0 flex-1">
-            <span class="block truncate text-sm text-[#0d0d0d] dark:text-[#ececec]">
+            <span class="block truncate text-sm app-text">
               {{ base.name }}
             </span>
-            <span class="block text-[11px] text-[#8e8e8e]">
+            <span class="block text-[11px] app-muted">
               {{ base.documentCount ?? 0 }} 篇文档 · {{ base.chunkCount ?? 0 }} 个片段
             </span>
           </span>
@@ -106,16 +106,16 @@ function resetParams() {
       <div class="space-y-3">
         <div>
           <div class="mb-1 flex items-center justify-between text-xs">
-            <span class="text-[#5d5d5d] dark:text-[#b4b4b4]">召回数量 Top-K</span>
-            <span class="font-medium text-[#0d0d0d] dark:text-[#ececec]">{{ chatStore.topK }}</span>
+            <span class="app-muted">召回数量 Top-K</span>
+            <span class="font-medium app-text">{{ chatStore.topK }}</span>
           </div>
           <el-slider v-model="chatStore.topK" :min="1" :max="10" :step="1" size="small" />
         </div>
 
         <div>
           <div class="mb-1 flex items-center justify-between text-xs">
-            <span class="text-[#5d5d5d] dark:text-[#b4b4b4]">相似度阈值</span>
-            <span class="font-medium text-[#0d0d0d] dark:text-[#ececec]">
+            <span class="app-muted">相似度阈值</span>
+            <span class="font-medium app-text">
               {{ chatStore.scoreThreshold.toFixed(2) }}
             </span>
           </div>
@@ -130,11 +130,11 @@ function resetParams() {
       </div>
 
       <div class="flex items-center justify-between pt-1">
-        <button class="text-xs text-[#8e8e8e] hover:text-brand" @click="resetParams">
+        <button class="text-xs app-muted transition hover-app-accent" @click="resetParams">
           恢复默认
         </button>
         <button
-          class="inline-flex items-center gap-1 text-xs text-brand hover:underline"
+          class="inline-flex items-center gap-1 text-xs app-accent hover:underline"
           @click="router.push({ name: 'knowledge' })"
         >
           <el-icon :size="13"><Setting /></el-icon>

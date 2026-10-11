@@ -90,10 +90,10 @@ async function handleSubmit() {
 
 <template>
   <AuthShell mode="register">
-    <h2 class="text-[22px] font-semibold tracking-tight text-[#0d0d0d] dark:text-[#ececec]">
+    <h2 class="text-[22px] font-semibold tracking-tight app-text">
       创建账号
     </h2>
-    <p class="mt-1.5 text-[13px] text-[#8c8c8c]">
+    <p class="mt-1.5 text-[13px] app-muted">
       注册后即可创建知识库、上传文档并开始智能问答
     </p>
 
@@ -157,13 +157,13 @@ async function handleSubmit() {
       </el-form-item>
 
       <el-checkbox v-model="form.agreed" class="!mb-4 !h-auto !items-start !whitespace-normal">
-        <span class="text-[12px] leading-5 text-[#8c8c8c]">
+        <span class="text-[12px] leading-5 app-muted">
           我已阅读并同意
-          <button type="button" class="text-brand hover:underline" @click.stop="openPolicy('terms')">
+          <button type="button" class="app-accent hover:underline" @click.stop="openPolicy('terms')">
             《服务协议》
           </button>
           与
-          <button type="button" class="text-brand hover:underline" @click.stop="openPolicy('privacy')">
+          <button type="button" class="app-accent hover:underline" @click.stop="openPolicy('privacy')">
             《隐私政策》
           </button>
         </span>
@@ -181,7 +181,7 @@ async function handleSubmit() {
     </el-form>
 
     <template #below>
-      <p class="px-1 text-center text-[11px] leading-5 text-[#9a9a9a]">
+      <p class="px-1 text-center text-[11px] leading-5 app-faint">
         {{ APP_TITLE }} 支持私有化部署，你的文档不会被用于训练对外公开的模型
       </p>
     </template>

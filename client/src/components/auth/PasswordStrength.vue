@@ -21,24 +21,24 @@ const result = computed(() => evaluatePassword(props.password, props.username))
           v-for="segment in 4"
           :key="segment"
           class="h-1 flex-1 rounded-full transition-colors duration-200"
-          :class="segment <= result.score ? result.color : 'bg-[#e9e9e9] dark:bg-[#3a3a3a]'"
+          :class="segment <= result.score ? result.color : 'app-active'"
         />
       </div>
       <span
         class="w-10 shrink-0 text-right text-[11px] font-medium"
         :class="{
-          'text-[#a8a8a8]': result.score === 0,
+          'app-faint': result.score === 0,
           'text-red-500': result.level === 'weak',
           'text-amber-500': result.level === 'fair',
           'text-emerald-500': result.level === 'good',
-          'text-brand': result.level === 'strong',
+          'app-accent': result.level === 'strong',
         }"
       >
         {{ result.label }}
       </span>
     </div>
 
-    <p v-if="showTips && result.tips.length" class="mt-1.5 text-[11px] leading-4 text-[#9a9a9a]">
+    <p v-if="showTips && result.tips.length" class="mt-1.5 text-[11px] leading-4 app-faint">
       {{ result.tips.join('；') }}
     </p>
   </div>

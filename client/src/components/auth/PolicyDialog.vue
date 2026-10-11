@@ -57,23 +57,23 @@ const privacySections = [
     append-to-body
   >
     <div class="scrollbar-thin max-h-[62vh] overflow-y-auto pr-2">
-      <p class="text-xs text-[#9a9a9a]">
+      <p class="text-xs app-faint">
         最近更新：2025-01-01 · 生效日期：2025-01-01
       </p>
 
       <div class="mt-5 space-y-5">
         <section v-for="section in (policyType === 'privacy' ? privacySections : termsSections)" :key="section.heading">
-          <h3 class="text-sm font-semibold text-[#0d0d0d] dark:text-[#ececec]">
+          <h3 class="text-sm font-semibold app-text">
             {{ section.heading }}
           </h3>
-          <p class="mt-1.5 text-[13px] leading-6 text-[#5d5d5d] dark:text-[#b4b4b4]">
+          <p class="mt-1.5 text-[13px] leading-6 app-text-secondary">
             {{ section.body }}
           </p>
         </section>
       </div>
 
       <div
-        class="mt-6 rounded-xl bg-[#f7f8fa] px-4 py-3 text-[13px] leading-6 text-[#5d5d5d] dark:bg-white/5 dark:text-[#b4b4b4]"
+        class="mt-6 rounded-xl border app-border app-panel px-4 py-3 text-[13px] leading-6 app-text-secondary"
       >
         <p>
           本文件为演示用模板文本。正式对外提供服务前，请由法务按实际业务主体、数据流向与部署方式重新拟定，
@@ -81,7 +81,7 @@ const privacySections = [
         </p>
         <p class="mt-1.5">
           如有疑问，可联系：
-          <a class="text-brand hover:underline" :href="`mailto:${SUPPORT_EMAIL}`">{{ SUPPORT_EMAIL }}</a>
+          <a class="app-accent hover:underline" :href="`mailto:${SUPPORT_EMAIL}`">{{ SUPPORT_EMAIL }}</a>
         </p>
       </div>
     </div>

@@ -14,18 +14,22 @@ for (const file of files) {
     file,
     bytes: css.length,
     checks: {
-      'tailwind .bg-brand': at('.bg-brand') >= 0,
+      'tailwind .bg-brand-light': at('.bg-brand-light') >= 0,
       'tailwind .animate-bounce-dot': at('.animate-bounce-dot') >= 0,
       'tailwind .animate-fade-up': at('.animate-fade-up') >= 0,
+      'tailwind .animate-pulse-glow': at('.animate-pulse-glow') >= 0,
       'tailwind .scrollbar-thin': at('.scrollbar-thin') >= 0,
-      'dark: arbitrary value #212121': at('#212121') >= 0,
+      '深色令牌 --app-canvas': at('--app-canvas') >= 0,
+      '首页语义类 .app-muted': at('.app-muted') >= 0,
+      '首页语义类 .tech-glass': at('.tech-glass') >= 0,
+      '登录态遮罩 --el-mask-color': at('--el-mask-color') >= 0,
       'markdown .markdown-body': at('.markdown-body') >= 0,
       'chat caret .is-streaming': at('.is-streaming') >= 0,
     },
   }
 
   const epDefault = at('--el-color-primary:#409eff')
-  const brand = at('--el-color-primary:#10a37f')
+  const brand = at('--el-color-primary:#2fd1a6')
   const darkBlock = at('html.dark')
   if (epDefault >= 0 || brand >= 0) {
     report.brandColor = {

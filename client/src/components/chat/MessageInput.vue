@@ -68,11 +68,11 @@ watch(
 </script>
 
 <template>
-  <div class="shrink-0 border-t border-[#e5e5e5] bg-white px-3 pb-3 pt-2 md:px-6 dark:border-[#2f2f2f] dark:bg-[#212121]">
+  <div class="shrink-0 border-t app-border app-canvas px-3 pb-3 pt-2 md:px-6">
     <div class="mx-auto w-full max-w-3xl">
       <!-- 已选知识库 -->
       <div v-if="selectedBases.length" class="mb-2 flex flex-wrap items-center gap-1.5">
-        <span class="text-xs text-[#8e8e8e]">检索范围：</span>
+        <span class="text-xs app-muted">检索范围：</span>
         <el-tag
           v-for="base in selectedBases"
           :key="base.id"
@@ -85,22 +85,22 @@ watch(
           {{ base.name }}
         </el-tag>
         <button
-          class="text-xs text-brand underline-offset-2 hover:underline"
+          class="text-xs app-accent underline-offset-2 hover:underline"
           @click="goKnowledge"
         >
           管理
         </button>
       </div>
-      <div v-else class="mb-2 flex items-center gap-2 text-xs text-[#8e8e8e]">
+      <div v-else class="mb-2 flex items-center gap-2 text-xs app-muted">
         <span>未选择知识库，将基于全部已就绪文档回答</span>
-        <button class="text-brand underline-offset-2 hover:underline" @click="goKnowledge">
+        <button class="app-accent underline-offset-2 hover:underline" @click="goKnowledge">
           去上传文档
         </button>
       </div>
 
       <!-- 输入区 -->
       <div
-        class="flex items-end gap-2 rounded-3xl border border-[#e5e5e5] bg-white px-3 py-2 shadow-sm transition focus-within:border-brand/60 focus-within:shadow-md dark:border-[#3a3a3a] dark:bg-[#2f2f2f]"
+        class="flex items-end gap-2 rounded-3xl border app-border app-elevated px-3 py-2 shadow-sm transition focus-within:border-brand-light/60 focus-within:shadow-lg"
       >
         <el-input
           ref="inputRef"
@@ -115,7 +115,7 @@ watch(
 
         <button
           v-if="streaming"
-          class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#0d0d0d] text-white transition hover:opacity-80 dark:bg-white dark:text-[#0d0d0d]"
+          class="tech-button grid h-9 w-9 shrink-0 place-items-center rounded-full"
           title="停止生成"
           @click="stop"
         >
@@ -123,11 +123,11 @@ watch(
         </button>
         <button
           v-else
-          class="grid h-9 w-9 shrink-0 place-items-center rounded-full transition disabled:cursor-not-allowed disabled:bg-[#e5e5e5] disabled:text-[#a3a3a3] dark:disabled:bg-[#3a3a3a]"
+          class="grid h-9 w-9 shrink-0 place-items-center rounded-full transition disabled:cursor-not-allowed"
           :class="
             canSend
-              ? 'bg-brand text-white hover:bg-brand-hover'
-              : 'bg-[#e5e5e5] text-[#a3a3a3] dark:bg-[#3a3a3a]'
+              ? 'bg-gradient-to-br from-brand-light to-brand text-white shadow-lg shadow-brand/25 hover:brightness-110'
+              : 'app-active app-faint'
           "
           :disabled="!canSend"
           title="发送（Enter）"
@@ -137,7 +137,7 @@ watch(
         </button>
       </div>
 
-      <div class="mt-2 flex items-center justify-between gap-3 px-1 text-[11px] text-[#a3a3a3]">
+      <div class="mt-2 flex items-center justify-between gap-3 px-1 text-[11px] app-faint">
         <span>
           Enter 发送 · Shift + Enter 换行
           <span v-if="chatStore.topK"> · Top-K {{ chatStore.topK }}</span>
