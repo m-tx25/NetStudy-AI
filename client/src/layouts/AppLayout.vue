@@ -24,10 +24,10 @@ watch(mobileSidebarOpen, (open) => {
 </script>
 
 <template>
-  <div class="flex h-screen w-full overflow-hidden bg-white dark:bg-[#212121]">
+  <div class="flex h-screen w-full overflow-hidden app-canvas">
     <!-- 桌面端固定侧边栏 -->
     <aside
-      class="hidden w-[264px] shrink-0 border-r border-[#e5e5e5] md:block dark:border-[#2f2f2f]"
+      class="hidden w-[264px] shrink-0 border-r app-border md:block"
     >
       <AppSidebar />
     </aside>

@@ -9,12 +9,13 @@
 
 | 模块 | 说明 |
 | --- | --- |
+| 落地首页 | 公开访问的整屏产品首页（可滚动）：产品能力、使用流程、技术架构、适用场景、常见问题，登录入口收成导航栏按钮 |
 | 登录 / 注册 | 表单校验、登录守卫、记住账号、忘记密码、服务协议与隐私政策 |
 | 智能问答 | ChatGPT 风格对话界面，SSE 流式返回 + 打字机效果，可随时停止生成 |
 | 引用溯源 | 每条回答列出引用的原文片段（文档名、页码、相关度），可点开核对 |
 | 知识库管理 | 知识库 CRUD、拖拽多文件上传、解析状态、参与检索开关、重新索引 |
 | 账号设置 | 修改昵称 / 用户名 / 邮箱，修改密码（校验当前密码，支持强制重新登录） |
-| 其他 | 明暗主题、会话分组与重命名、检索范围与 Top-K 参数、移动端自适应 |
+| 其他 | 深灰科技风主题（默认深色，可切浅色）、会话分组与重命名、检索范围与 Top-K 参数、移动端自适应 |
 
 > 前端默认跑在 **Mock 演示模式**（`client/.env.development` 里 `VITE_USE_MOCK=true`），
 > 没有后端也能完整体验全部交互。接真实后端时把它改成 `false` 并重启 dev server。
@@ -24,8 +25,9 @@
 
 - [开发报告](docs/development-report.md) — 已完成工作、技术选型、验证记录、已知问题与下一步计划
 - [前端接口与 SSE 协议约定](docs/frontend-api.md) — REST 接口、`text/event-stream` 事件格式、数据模型
-- [多人协作说明](docs/collaboration.md) — 邀请协作者、保护 `main`、分支/PR 流程、令牌与 SSH 配置
 - [前端说明](client/README.md) — 目录结构、功能清单、自检脚本、界面截图
+- [多人协作说明](docs/collaboration.md) — 邀请协作者、保护 `main`、分支/PR 流程、令牌与 SSH 配置
+- [RAG 检索模块](rag/README.md) — PDF 切片、向量化入 ChromaDB、检索验证（Python，与主项目独立）
 
 ## 项目结构
 
@@ -43,9 +45,17 @@
 │       ├── stores/             Pinia：user / chat / knowledge
 │       ├── router/             路由表与登录守卫
 │       ├── layouts/            AppLayout（侧边栏+主区）、AuthShell（登录注册）
-│       ├── components/         chat / knowledge / auth / layout 组件
-│       ├── composables/        主题、打字机、侧边栏、协议弹窗
+│       ├── components/         landing / chat / knowledge / auth / layout 组件
+│       ├── composables/        主题、滚动入场、打字机、侧边栏、协议弹窗
 │       ├── utils/              SSE、Markdown、格式化、剪贴板、密码强度
+│       └── views/              首页 / 登录 / 注册 / 问答 / 知识库 / 账号设置 / 404
+├── server/                     后端：Node.js + Express
+│   ├── .env.example            环境变量模板
+│   └── src/index.js            入口，含 /api/health 健康检查
+├── rag/                        RAG 检索模块（Python，与主项目独立）
+│   ├── build_db.py             PDF → 切片 → 向量化 → ChromaDB
+│   ├── query_db.py             检索验证（支持混合检索）
+│   └── README.md               使用说明
 │       └── views/              登录 / 注册 / 问答 / 知识库 / 账号设置 / 404
 ├── server/                     后端：Python + FastAPI（详见 server/README.md）
 │   ├── app/
@@ -129,7 +139,20 @@ npm run install:client   # 安装前端依赖
 > 后端的依赖与启动统一由 `server/` 目录管理（Python 生态），
 > 详细说明见 [server/README.md](server/README.md)。
 
-## 启动开发环境（需要两个终端）
+## 启动开发环境
+
+**方式一：一条命令同时起前后端（推荐）**
+
+```bash
+npm run dev              # 前端 http://localhost:5173 + 后端 http://localhost:3000
+npm run dev -- --client  # 只起前端（Mock 模式足够体验全部功能）
+npm run dev -- --server  # 只起后端
+```
+
+> 注意：根目录**没有**单独的 `npm run dev` 之外的简写，旧文档里写的 `npm run dev:client` / `npm run dev:server`
+> 依然可用；如果你在根目录直接执行 `npm run dev` 报 `Missing script: "dev"`，说明拿到的是本次改动之前的代码。
+
+**方式二：两个终端分别启动**
 
 ```bash
 # 终端 1：后端，http://localhost:3000
@@ -141,6 +164,10 @@ cd client
 npm run dev
 ```
 
+打开 <http://localhost:5173> 是公开的产品首页（`/`），点导航栏「登录」进入 `/login`；
+Mock 模式下登录表单已预填 `demo / 123456`，直接点「登 录」或「一键体验演示账号」即可看到完整问答流程。
+登录后的工作台在 `/app` 下：`/app/chat`（问答）、`/app/knowledge`（知识库）、`/app/settings`（账号设置），
+旧的 `/chat`、`/knowledge`、`/settings` 会自动重定向过去。
 打开 <http://localhost:5173>，Mock 模式下登录页已预填 `demo / 123456`，直接点「登录」
 或「一键体验演示账号」即可看到完整问答流程。
 
@@ -162,6 +189,9 @@ VITE_USE_MOCK=false
 
 | 位置 | 命令 | 说明 |
 | --- | --- | --- |
+| 根目录 | `npm run install:all` | 安装前后端依赖 |
+| 根目录 | `npm run dev` | 同时启动前端与后端（`-- --client` / `-- --server` 可只起其中一个） |
+| 根目录 | `npm run dev:client` / `npm run dev:server` | 只启动前端 / 后端 |
 | 根目录 | `npm run install:client` | 安装前端依赖 |
 | 根目录 | `npm run dev:client` | 只启动前端 |
 | 根目录 | `npm run build` | 构建前端到 `client/dist` |

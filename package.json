@@ -5,6 +5,8 @@
   "description": "传智杯 Web 方向参赛项目：Vue 3 + Vite 前端 / Python + FastAPI 后端（RAG 知识问答系统）",
   "type": "module",
   "scripts": {
+    "install:all": "npm --prefix client install && npm --prefix server install",
+    "dev": "node scripts/dev.mjs",
     "install:client": "npm --prefix client install",
     "dev:client": "npm --prefix client run dev",
     "build": "npm --prefix client run build",

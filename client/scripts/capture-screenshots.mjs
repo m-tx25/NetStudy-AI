@@ -42,19 +42,25 @@ async function main() {
   try {
     await cdp.send('Storage.clearDataForOrigin', { origin: ORIGIN, storageTypes: 'all' }).catch(() => {})
 
-    /* 1. 登录页（固定浅色主题，保证风格统一） */
-    await cdp.goto(`${ORIGIN}/login`)
-    await cdp.evaluate(`localStorage.setItem('rag.theme', 'light')`)
+    /* 1. 首页落地页（默认深色科技风，整屏 + 可滚动） */
+    await cdp.goto(`${ORIGIN}/`)
+    await delay(1800)
+    await shot('00-home.png')
+    await cdp.evaluate(`window.scrollTo({ top: Math.round(window.innerHeight * 1.15), behavior: 'instant' })`)
+    await delay(1400)
+    await shot('00b-home-scroll.png')
+
+    /* 2. 登录页 */
     await cdp.goto(`${ORIGIN}/login`)
     await delay(1600)
     await shot('01-login.png')
 
-    /* 2. 注册页 */
+    /* 3. 注册页 */
     await cdp.goto(`${ORIGIN}/register`)
     await delay(1300)
     await shot('02-register.png')
 
-    /* 3. 回到登录页，通过界面真实登录，让 Mock 侧建立登录态 */
+    /* 4. 回到登录页，通过界面真实登录，让 Mock 侧建立登录态 */
     await cdp.goto(`${ORIGIN}/login`)
     await delay(1400)
     const loggedIn = await cdp.evaluate(`(() => {
@@ -66,15 +72,15 @@ async function main() {
     if (!loggedIn) throw new Error('截图前置的登录动作失败')
     await delay(2500)
 
-    /* 4. 问答欢迎页 */
+    /* 5. 问答欢迎页 */
     await shot('03-chat-welcome.png')
 
-    /* 5. 流式生成中 */
+    /* 6. 流式生成中 */
     await cdp.evaluate(`(() => { ${HELPERS} return clickByText('总结文档要点') })()`)
     await delay(2600)
     await shot('04-chat-streaming.png')
 
-    /* 6. 回答完成（含引用来源展开） */
+    /* 7. 回答完成（含引用来源展开） */
     await delay(14000)
     await cdp.evaluate(`(() => {
       const chip = document.querySelector('button[title$=".md"], button[title$=".pdf"], button[title$=".docx"]')
@@ -84,20 +90,20 @@ async function main() {
     await delay(700)
     await shot('05-chat-answer.png')
 
-    /* 7. 知识库管理 */
-    await cdp.goto(`${ORIGIN}/knowledge`)
+    /* 8. 知识库管理 */
+    await cdp.goto(`${ORIGIN}/app/knowledge`)
     await delay(2400)
     await shot('06-knowledge.png')
 
-    /* 8. 上传弹窗 */
+    /* 9. 上传弹窗 */
     await cdp.evaluate(`(() => { ${HELPERS} return clickByText('上传文档') })()`)
     await delay(1200)
     await shot('07-upload-dialog.png')
     await cdp.evaluate(`document.querySelector('.el-dialog__headerbtn')?.click()`)
     await delay(600)
 
-    /* 9. 账号设置：资料卡片（含「登录账号将变更」提示） */
-    await cdp.goto(`${ORIGIN}/settings`)
+    /* 10. 账号设置：资料卡片（含「登录账号将变更」提示） */
+    await cdp.goto(`${ORIGIN}/app/settings`)
     await delay(2200)
     await cdp.evaluate(`(() => {
       ${HELPERS}
@@ -122,15 +128,15 @@ async function main() {
     await delay(900)
     await shot('09-settings-password.png')
 
-    /* 11. 深色主题下的问答 */
+    /* 11. 浅色主题下的问答（深色是默认主题，这里验证浅色仍可用） */
     await cdp.evaluate(`(() => {
-      localStorage.setItem('rag.theme', 'dark')
-      document.documentElement.classList.add('dark')
+      localStorage.setItem('rag.theme', 'light')
+      document.documentElement.classList.remove('dark')
       return true
     })()`)
-    await cdp.goto(`${ORIGIN}/chat`)
+    await cdp.goto(`${ORIGIN}/app/chat`)
     await delay(2600)
-    await shot('10-chat-dark.png')
+    await shot('10-chat-light.png')
   } finally {
     close()
   }

@@ -4,40 +4,85 @@
 
 /* ==========================================================================
    1. 设计令牌 & Element Plus 主题变量覆盖
+   主题基调：深灰 + 青绿科技感（深色为默认主题，可切换到浅色）
    ========================================================================== */
 @layer base {
   /* 注意：Element Plus 的 dark/css-vars.css 用 `html.dark`(0,1,1) 写死了
      --el-color-primary，这里必须同样带上 html.dark 才能让品牌色在深色模式下生效 */
-  :root,
-  html.dark {
-    --app-sidebar: #f9f9f9;
-    --app-sidebar-hover: #ececec;
-    --app-sidebar-active: #e3e3e3;
+  :root {
+    /* 浅色模式：中性灰白，去掉偏蓝的冷调 */
+    --app-bg: #f4f5f6;
     --app-canvas: #ffffff;
-    --app-border: #e5e5e5;
-    --app-text: #0d0d0d;
-    --app-text-muted: #6b6b6b;
+    --app-panel: #f7f8f9;
+    --app-elevated: #ffffff;
+    --app-sidebar: #eceef0;
+    --app-hover: rgba(15, 23, 42, 0.06);
+    --app-active: rgba(15, 23, 42, 0.1);
+    --app-border: #e2e4e8;
+    --app-border-strong: #ced2d8;
+    --app-text: #16191d;
+    --app-text-secondary: #454b54;
+    --app-text-muted: #757c86;
+    --app-text-faint: #9aa1ab;
+    --app-accent: #0f9b7a;
+    --app-accent-soft: rgba(15, 155, 122, 0.1);
+    --app-accent-glow: rgba(15, 155, 122, 0.22);
+    --app-grid: rgba(22, 25, 29, 0.07);
+    --app-shadow-lg: 0 24px 70px -34px rgba(15, 23, 42, 0.35);
 
-    /* Element Plus 主色改为 RAG 主题绿（ChatGPT 风），保持全局一致 */
-    --el-color-primary: #10a37f;
-    --el-color-primary-light-3: #4bbda1;
-    --el-color-primary-light-5: #87d3c0;
-    --el-color-primary-light-7: #b6e5d9;
-    --el-color-primary-light-8: #ceeee5;
-    --el-color-primary-light-9: #e7f6f2;
-    --el-color-primary-dark-2: #0d8266;
+    /* Element Plus 主色：科技青绿 */
+    --el-color-primary: #0f9b7a;
+    --el-color-primary-light-3: #45b79c;
+    --el-color-primary-light-5: #7ecfbb;
+    --el-color-primary-light-7: #b4e3d7;
+    --el-color-primary-light-8: #cdece4;
+    --el-color-primary-light-9: #e7f6f1;
+    --el-color-primary-dark-2: #0b7c62;
     --el-border-radius-base: 8px;
     --el-font-family: inherit;
   }
 
   html.dark {
-    --app-sidebar: #171717;
-    --app-sidebar-hover: #2f2f2f;
-    --app-sidebar-active: #3a3a3a;
-    --app-canvas: #212121;
-    --app-border: #3a3a3a;
-    --app-text: #ececec;
-    --app-text-muted: #a0a0a0;
+    /* 深色模式（默认）：深灰科技底 + 青绿点缀 */
+    --app-bg: #0b0e12;
+    --app-canvas: #101318;
+    --app-panel: #151a20;
+    --app-elevated: #1a2028;
+    --app-sidebar: #0e1116;
+    --app-hover: rgba(255, 255, 255, 0.06);
+    --app-active: rgba(255, 255, 255, 0.1);
+    --app-border: #232a33;
+    --app-border-strong: #333c47;
+    --app-text: #e6eaef;
+    --app-text-secondary: #b2bac4;
+    --app-text-muted: #8a929d;
+    --app-text-faint: #6a727d;
+    --app-accent: #2fd1a6;
+    --app-accent-soft: rgba(47, 209, 166, 0.12);
+    --app-accent-glow: rgba(47, 209, 166, 0.4);
+    --app-grid: rgba(255, 255, 255, 0.06);
+    --app-shadow-lg: 0 30px 80px -40px rgba(0, 0, 0, 0.85);
+
+    --el-color-primary: #2fd1a6;
+    --el-color-primary-light-3: #55dab6;
+    --el-color-primary-light-5: #86e4c8;
+    --el-color-primary-light-7: #b7eedd;
+    --el-color-primary-light-8: #cdf3e7;
+    --el-color-primary-light-9: #e4f9f2;
+    --el-color-primary-dark-2: #22a988;
+    --el-bg-color: #101318;
+    --el-bg-color-page: #0b0e12;
+    --el-bg-color-overlay: #1a2028;
+    --el-text-color-primary: #e6eaef;
+    --el-text-color-regular: #ccd3db;
+    --el-text-color-secondary: #8a929d;
+    --el-text-color-placeholder: #6a727d;
+    --el-border-color: #333c47;
+    --el-border-color-light: #232a33;
+    --el-border-color-lighter: #232a33;
+    --el-fill-color-light: rgba(255, 255, 255, 0.05);
+    --el-fill-color-blank: #151a20;
+    --el-mask-color: rgba(6, 8, 11, 0.72);
   }
 
   html,
@@ -46,14 +91,35 @@
     height: 100%;
   }
 
+  /* 深色模式下浏览器原生控件（滚动条、表单）也用深色 */
+  html {
+    color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
   body {
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
       'Hiragino Sans GB', 'Microsoft YaHei', Roboto, Helvetica, Arial, sans-serif;
     color: var(--app-text);
-    background-color: var(--app-canvas);
+    background-color: var(--app-bg);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* 首页等长页面横向不要出现滚动条（装饰光斑会溢出容器）。
+     注意：这里必须用 clip 而不是 hidden —— overflow-x:hidden 会把 overflow-y 提升为 auto，
+     使 #app（height:100%）变成滚动容器，整页就再也收不到 window 的滚动事件。 */
+  #app {
+    overflow-x: clip;
+  }
+
+  ::selection {
+    background: var(--app-accent-soft);
+    color: var(--app-text);
   }
 
   /* Tailwind preflight 会把 ul/ol 变成无样式，这里为正文区恢复 */
@@ -67,12 +133,229 @@
 }
 
 /* ==========================================================================
-   2. 滚动条：细、低调，跟 ChatGPT 接近
+   1.1 语义化配色工具类：深浅色共用同一套类名，配色只由 :root / html.dark 决定
+   ========================================================================== */
+@layer utilities {
+  /* 页面 / 面板底色 */
+  .app-bg {
+    background-color: var(--app-bg);
+  }
+
+  .app-canvas {
+    background-color: var(--app-canvas);
+  }
+
+  .app-panel {
+    background-color: var(--app-panel);
+  }
+
+  .app-elevated {
+    background-color: var(--app-elevated);
+  }
+
+  .app-sidebar-bg {
+    background-color: var(--app-sidebar);
+  }
+
+  /* 边框 */
+  .app-border {
+    border-color: var(--app-border);
+  }
+
+  .app-border-strong {
+    border-color: var(--app-border-strong);
+  }
+
+  /* 文字层级 */
+  .app-text {
+    color: var(--app-text);
+  }
+
+  .app-text-secondary {
+    color: var(--app-text-secondary);
+  }
+
+  .app-muted {
+    color: var(--app-text-muted);
+  }
+
+  .app-faint {
+    color: var(--app-text-faint);
+  }
+
+  .app-accent {
+    color: var(--app-accent);
+  }
+
+  /* 交互态 */
+  .app-hover:hover {
+    background-color: var(--app-hover);
+  }
+
+  .app-active {
+    background-color: var(--app-active);
+  }
+
+  /* 卡片 / 输入框 */
+  .app-card {
+    border: 1px solid var(--app-border);
+    background-color: var(--app-elevated);
+  }
+
+  .app-field {
+    border: 1px solid var(--app-border);
+    background-color: var(--app-panel);
+    color: var(--app-text);
+  }
+
+  .app-field:hover {
+    border-color: var(--app-border-strong);
+  }
+
+  /* 柔和强调底色（徽标、图标底） */
+  .app-accent-soft {
+    background-color: var(--app-accent-soft);
+    color: var(--app-accent);
+  }
+
+  /* 科技感按钮 */
+  .tech-button {
+    border: 1px solid var(--app-border-strong);
+    background-color: var(--app-panel);
+    color: var(--app-text);
+    transition:
+      border-color 0.18s ease,
+      background-color 0.18s ease,
+      color 0.18s ease,
+      box-shadow 0.18s ease;
+  }
+
+  .tech-button:hover {
+    border-color: var(--app-accent);
+    color: var(--app-accent);
+    box-shadow: 0 0 0 3px var(--app-accent-soft);
+  }
+
+  .tech-button-solid {
+    background-image: linear-gradient(135deg, #25c39c 0%, #0f9b7a 100%);
+    color: #ffffff;
+    box-shadow: 0 10px 30px -12px var(--app-accent-glow);
+    transition:
+      transform 0.18s ease,
+      box-shadow 0.18s ease,
+      filter 0.18s ease;
+  }
+
+  .tech-button-solid:hover {
+    filter: brightness(1.06);
+    box-shadow: 0 14px 38px -12px var(--app-accent-glow);
+  }
+
+  /* 玻璃拟态卡片：深色下是深灰半透明，浅色下自动变浅 */
+  .tech-glass {
+    border: 1px solid var(--app-border);
+    background-color: color-mix(in srgb, var(--app-elevated) 78%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+
+  .tech-glass:hover {
+    border-color: var(--app-border-strong);
+  }
+
+  /* 悬浮变强调色（放在上面的文字色之后，保证后者生效） */
+  .hover-app-accent:hover {
+    color: var(--app-accent);
+  }
+
+  .hover-app-text:hover {
+    color: var(--app-text);
+  }
+
+  /* 悬浮上移 */
+  .tech-lift {
+    transition:
+      transform 0.22s ease,
+      border-color 0.22s ease,
+      box-shadow 0.22s ease;
+  }
+
+  .tech-lift:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 22px 48px -28px rgba(0, 0, 0, 0.6);
+  }
+
+  /* 渐变文字（标题里的强调词）：backgroundColor 会被裁剪，补一点内边距避免末字被切 */
+  .tech-gradient-text {
+    background-image: linear-gradient(120deg, #2fd1a6 0%, #63e0ff 55%, #8ab4ff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    padding-right: 0.1em;
+    padding-bottom: 0.04em;
+  }
+
+  /* 装饰：科技网格 / 光晕 */
+  .tech-grid {
+    background-image:
+      linear-gradient(to right, var(--app-grid) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--app-grid) 1px, transparent 1px);
+    background-size: 56px 56px;
+  }
+
+  .tech-grid-fade {
+    -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 35%, #000 35%, transparent 100%);
+    mask-image: radial-gradient(ellipse 70% 60% at 50% 35%, #000 35%, transparent 100%);
+  }
+
+  .tech-glow {
+    position: absolute;
+    pointer-events: none;
+    border-radius: 9999px;
+    filter: blur(110px);
+    background: var(--app-accent);
+    opacity: 0.16;
+  }
+
+  .tech-hairline {
+    background-image: linear-gradient(90deg, transparent, var(--app-border-strong), transparent);
+  }
+}
+
+/* 首页滚动进入动画（配合 HomeView 里的 IntersectionObserver）。
+   放进 components 层，这样 .is-visible 的 transform:none 不会盖住 utilities 层里
+   .tech-lift:hover 的 translateY，卡片滚动到位后仍然能被悬停抬起。 */
+@layer components {
+  .reveal {
+    opacity: 0;
+    transform: translateY(18px);
+    transition:
+      opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+      transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: opacity, transform;
+  }
+
+  .reveal.is-visible {
+    opacity: 1;
+    transform: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .reveal {
+      opacity: 1;
+      transform: none;
+      transition: none;
+    }
+  }
+}
+
+/* ==========================================================================
+   2. 滚动条：细、低调，带一点科技青
    ========================================================================== */
 @layer utilities {
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: rgba(120, 120, 120, 0.45) transparent;
+    scrollbar-color: color-mix(in srgb, var(--app-accent) 45%, transparent) transparent;
   }
 
   .scrollbar-thin::-webkit-scrollbar {
@@ -85,14 +368,14 @@
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: rgba(120, 120, 120, 0.4);
+    background-color: color-mix(in srgb, var(--app-accent) 40%, transparent);
     border-radius: 9999px;
     border: 2px solid transparent;
     background-clip: content-box;
   }
 
   .scrollbar-thin:hover::-webkit-scrollbar-thumb {
-    background-color: rgba(120, 120, 120, 0.65);
+    background-color: color-mix(in srgb, var(--app-accent) 65%, transparent);
   }
 
   .text-balance {
@@ -315,7 +598,7 @@
 .el-table {
   --el-table-border-color: var(--app-border);
   --el-table-header-bg-color: rgba(127, 127, 127, 0.06);
-  --el-table-row-hover-bg-color: rgba(16, 163, 127, 0.07);
+  --el-table-row-hover-bg-color: var(--app-accent-soft);
 }
 
 .el-menu {
