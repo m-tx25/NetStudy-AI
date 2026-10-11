@@ -5,9 +5,9 @@
  *      改密码（先试错再成功）→ 强制重新登录 → 用新凭据登录 → 知识库页 → 主题切换。
  *
  * 前置：先启动 dev server（VITE_USE_MOCK=true）
- *   pnpm dev:client
+ *   npm run dev:client
  * 运行：
- *   pnpm --filter client check:e2e
+ *   npm run check:e2e
  */
 import { delay, launchBrowser } from './lib/cdp.mjs'
 

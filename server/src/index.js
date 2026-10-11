@@ -1,29 +1,46 @@
+import cors from 'cors'
+import dotenv from 'dotenv'
 import express from 'express'
 
-const app = express()
-const PORT = Number(process.env.PORT ?? 3000)
+dotenv.config()
 
+const app = express()
+const PORT = process.env.PORT || 3000
+
+// 中间件
+app.use(cors())
 app.use(express.json())
 
-// 健康检查：前端「检测后端」按钮就是打这个接口
+// 健康检查（前端首页用它验证前后端连通）
 app.get('/api/health', (req, res) => {
   res.json({
-    status: 'ok',
+    ok: true,
+    service: 'chuangzhibei-server',
     time: new Date().toISOString(),
-    uptime: process.uptime(),
   })
 })
 
-// 示例接口：后续业务路由建议拆到 server/src/routes/ 下再挂载
-app.get('/api/hello', (req, res) => {
-  const name = req.query.name ?? 'world'
-  res.json({ message: `hello, ${name}` })
+// 业务路由挂载在这里，例如：
+// import userRouter from './routes/user.js'
+// app.use('/api/users', userRouter)
+
+// 404
+app.use((req, res) => {
+  res.status(404).json({ ok: false, message: 'Not Found' })
 })
 
-app.use((req, res) => {
-  res.status(404).json({ error: 'Not Found', path: req.originalUrl })
+// 统一错误处理
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error(err)
+  res.status(err.status || 500).json({
+    ok: false,
+    message: err.message || 'Internal Server Error',
+  })
 })
 
 app.listen(PORT, () => {
   console.log(`[server] listening on http://localhost:${PORT}`)
 })
+
+export default app

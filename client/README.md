@@ -9,11 +9,11 @@
 ## 一、快速开始
 
 ```bash
-# 1. 安装依赖（在仓库根目录执行，pnpm workspace 会一起装 client 与 server）
-pnpm install
+# 1. 安装依赖（在仓库根目录执行，npm --prefix 转发，一次装好 client 与 server）
+npm run install:all
 
 # 2. 启动前端
-pnpm dev:client          # 等价于 pnpm --filter client dev
+npm run dev:client          # 等价于 npm run dev:client
 
 # 3. 打开 http://localhost:5173
 ```
@@ -21,13 +21,13 @@ pnpm dev:client          # 等价于 pnpm --filter client dev
 > 默认开启 **Mock 演示模式**（`client/.env.development` 中 `VITE_USE_MOCK=true`），
 > 不需要后端即可完整体验：登录、流式问答、知识库与文档上传管理都会有模拟数据。
 > 要接入真实后端，把 `VITE_USE_MOCK` 改成 `false` 并重启 dev server；
-> 同时先启动后端 `pnpm dev:server`（默认 `http://localhost:3000`，由 Vite 代理 `/api`）。
+> 同时先启动后端 `npm run dev:server`（默认 `http://localhost:3000`，由 Vite 代理 `/api`）。
 
 生产构建：
 
 ```bash
-pnpm build        # 产物在 client/dist
-pnpm preview      # 本地预览构建产物
+npm run build        # 产物在 client/dist
+npm run preview      # 本地预览构建产物
 ```
 
 ---
@@ -102,7 +102,7 @@ client/
 
 ## 四、界面预览
 
-截图位于 [`docs/screenshots`](../docs/screenshots)，由 `pnpm --filter client screenshots` 自动生成：
+截图位于 [`docs/screenshots`](../docs/screenshots)，由 `npm run screenshots` 自动生成：
 
 | 页面 | 文件 |
 | --- | --- |
@@ -155,7 +155,7 @@ client/
 | `VITE_APP_TITLE` | `RAG 知识问答系统` | 同左 | 显示在登录页与侧边栏 |
 
 > 想交付一个「纯前端、点开就能演示」的构建包，把 `client/.env.production` 里的
-> `VITE_USE_MOCK` 改成 `true` 再 `pnpm build` 即可。
+> `VITE_USE_MOCK` 改成 `true` 再 `npm run build` 即可。
 
 ---
 
@@ -178,10 +178,10 @@ client/
 用于在没有人工点测的情况下验证前端是否真的能跑：
 
 ```bash
-pnpm --filter client build          # 生产构建
-pnpm --filter client check:build    # 检查构建产物里 Tailwind 工具类、主题色覆盖是否真的生效
-pnpm --filter client check:e2e      # 端到端：路由守卫 → 流式问答 → 引用来源 → 知识库页（需先启动 dev server）
-pnpm --filter client screenshots    # 自动生成 docs/screenshots 下的界面截图
+npm run build          # 生产构建
+npm run check:build    # 检查构建产物里 Tailwind 工具类、主题色覆盖是否真的生效
+npm run check:e2e      # 端到端：路由守卫 → 流式问答 → 引用来源 → 知识库页（需先启动 dev server）
+npm run screenshots    # 自动生成 docs/screenshots 下的界面截图
 ```
 
 `check:e2e` 会启动无头浏览器、注入登录态、点击欢迎页示例问题、等待 SSE 流结束，

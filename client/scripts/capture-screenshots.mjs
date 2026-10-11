@@ -2,9 +2,9 @@
  * 用无头浏览器给主要页面截图，产出到 docs/screenshots/。
  *
  * 前置：先启动 dev server（Mock 模式）
- *   pnpm dev:client
+ *   npm run dev:client
  * 运行：
- *   pnpm --filter client screenshots
+ *   npm run screenshots
  */
 import { join } from 'node:path'
 
