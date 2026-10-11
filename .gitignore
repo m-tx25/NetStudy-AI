@@ -5,6 +5,18 @@
 node_modules/
 vendor/
 
+# Python 虚拟环境与字节码
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 后端运行数据（SQLite 数据库与上传文件，删除后重启会自动重建演示数据）
+server/data/
+
 # 构建产物
 dist/
 build/

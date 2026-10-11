@@ -1,0 +1,436 @@
+"""向量库：ChromaDB 持久化客户端。
+
+方案来源：协作者的 `rag/build_db.py` / `rag/query_db.py`，本模块把它生产化：
+  1. 用**单一集合 + 元数据过滤**实现多用户/多知识库隔离
+     （他们的脚本是单文件单集合，没有 owner 概念）；
+  2. 保留 rpd 的**混合检索**：0.5×向量相似度 + 0.5×词面命中，
+     术语/公式/手册类文档下比纯向量稳；
+  3. 文档停用/删除时同步从向量库移除，避免检索到已失效内容。
+
+与 rag 脚本的差异（有意为之）：
+  - 集合名带后缀区分向量空间：智谱 embedding-3 与 Chroma 默认 ONNX 模型的向量
+    **不可混用**，Chroma 在集合创建时就固定了维度，混用会直接报维度错误。
+  - 距离转相似度：Chroma 默认 L2 距离，做 1 - d/2 归一化到 0~1，
+    以便前端按百分比展示（前端对 0~1 与 0~100 都能识别）。
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+import time
+from pathlib import Path
+from typing import Any
+
+from app.core.config import settings
+from app.services import embeddings
+
+logger = logging.getLogger(__name__)
+
+# 候选池：混合检索需要多取一些再重排（与 rag/query_db.py 的 pool=40 一致）
+HYBRID_POOL = 40
+# 向量相似度与词面得分在混合排序中的权重
+VECTOR_WEIGHT = 0.5
+LEXICAL_WEIGHT = 0.5
+
+
+class VectorStoreUnavailable(RuntimeError):
+    """向量库不可用（未安装依赖、目录不可写等），消息可直接展示给用户。"""
+
+
+_client = None
+
+
+def collection_name() -> str:
+    """按向量化模式区分集合，避免两种向量空间混入同一集合。"""
+    suffix = "zhipu2048" if embeddings.is_zhipu_configured() else "default"
+    return f"{settings.CHROMA_COLLECTION}_{suffix}"
+
+
+def _persist_dir() -> Path:
+    directory = Path(settings.CHROMA_PERSIST_DIR)
+    if not directory.is_absolute():
+        directory = Path.cwd() / directory
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+def get_client():
+    global _client
+    if _client is not None:
+        return _client
+    try:
+        import chromadb
+    except ImportError as exc:  # pragma: no cover
+        raise VectorStoreUnavailable(
+            "未安装 chromadb，请执行 pip install -r requirements.txt"
+        ) from exc
+
+    try:
+        _client = chromadb.PersistentClient(path=str(_persist_dir()))
+    except Exception as exc:  # 目录不可写、版本不兼容等
+        raise VectorStoreUnavailable(f"初始化 ChromaDB 失败：{exc}") from exc
+    return _client
+
+
+def get_collection():
+    """获取（必要时创建）集合。"""
+    client = get_client()
+    kwargs: dict[str, Any] = {
+        "name": collection_name(),
+        # 显式声明距离度量，便于日后换 cosine 时行为可预期
+        "metadata": {"hnsw:space": "l2", "embedding": embeddings.current_mode()},
+    }
+    embedding_function = embeddings.get_embeddings()
+    if embedding_function is not None:
+        kwargs["embedding_function"] = embedding_function
+
+    try:
+        return client.get_or_create_collection(**kwargs)
+    except Exception as exc:
+        raise VectorStoreUnavailable(f"打开向量集合失败：{exc}") from exc
+
+
+# --------------------------------------------------------------------------
+# 词面打分（移植自 rag/query_db.py，用于混合检索重排）
+# --------------------------------------------------------------------------
+def extract_terms(question: str) -> list[str]:
+    """抽词：中文按 2-gram，英文/数字按单词，无需分词器。"""
+    terms: set[str] = set()
+    for token in re.findall(r"[A-Za-z0-9_]{2,}", question):
+        terms.add(token.lower())
+    for segment in re.findall(r"[\u3400-\u9fff\u2e80-\u2fdf]{2,}", question):
+        for index in range(len(segment) - 1):
+            terms.add(segment[index : index + 2])
+    return list(terms)
+
+
+def lexical_score(question: str, text: str) -> int:
+    """词面命中打分：命中词数 + 词频，长词加权。"""
+    if not text:
+        return 0
+    lowered = text.lower()
+    score = 0
+    for term in extract_terms(question):
+        count = lowered.count(term)
+        if count:
+            score += count * (2 if len(term) >= 3 else 1)
+    return score
+
+
+def _distance_to_similarity(distance: float | None) -> float:
+    """L2 距离 → 0~1 相似度（归一化向量下 L2 距离范围约 0~2）。"""
+    if distance is None:
+        return 0.0
+    return max(0.0, min(1.0, 1.0 - float(distance) / 2.0))
+
+
+# --------------------------------------------------------------------------
+# 数据结构
+# --------------------------------------------------------------------------
+class RetrievedChunk:
+    __slots__ = (
+        "chunk_id",
+        "document_id",
+        "document_name",
+        "knowledge_base_id",
+        "knowledge_base_name",
+        "content",
+        "page",
+        "score",
+        "ordinal",
+    )
+
+    def __init__(
+        self,
+        *,
+        chunk_id: str,
+        document_id: str,
+        document_name: str,
+        knowledge_base_id: str,
+        knowledge_base_name: str,
+        content: str,
+        page: int | None,
+        score: float,
+        ordinal: int,
+    ) -> None:
+        self.chunk_id = chunk_id
+        self.document_id = document_id
+        self.document_name = document_name
+        self.knowledge_base_id = knowledge_base_id
+        self.knowledge_base_name = knowledge_base_name
+        self.content = content
+        self.page = page
+        self.score = score
+        self.ordinal = ordinal
+
+    def snippet(self, limit: int = 160) -> str:
+        text = " ".join(self.content.split())
+        return text if len(text) <= limit else f"{text[:limit]}…"
+
+
+# --------------------------------------------------------------------------
+# 写入
+# --------------------------------------------------------------------------
+def add_chunks(
+    *,
+    owner_id: str,
+    knowledge_base_id: str,
+    knowledge_base_name: str,
+    document_id: str,
+    document_name: str,
+    chunks: list[tuple[int, str, int | None]],
+) -> int:
+    """写入切片。chunks 为 [(ordinal, content, page_label)]。
+
+    page_label 是人类可读页码（1 基）；Markdown/Word 无分页概念时传 None。
+    """
+    if not chunks:
+        return 0
+
+    collection = get_collection()
+
+    ids: list[str] = []
+    documents: list[str] = []
+    metadatas: list[dict[str, Any]] = []
+
+    for ordinal, content, page in chunks:
+        text = (content or "").strip()
+        if not text:
+            continue
+        # 稳定 ID：同一文档重复写入会覆盖而不是堆积
+        chunk_id = f"{document_id}:{ordinal:05d}"
+        ids.append(chunk_id)
+        documents.append(text)
+        metadatas.append(
+            {
+                "owner_id": owner_id,
+                "knowledge_base_id": knowledge_base_id,
+                "knowledge_base_name": knowledge_base_name,
+                "document_id": document_id,
+                "document_name": document_name,
+                "ordinal": ordinal,
+                # Chroma 元数据只接受 str/int/float/bool，None 需转成 -1
+                "page_label": int(page) if page else -1,
+            }
+        )
+
+    if not ids:
+        return 0
+
+    # 分批写入，避免单次请求过大（智谱 embedding 单次最多 64 条）
+    batch = 32
+    written = 0
+    for start in range(0, len(ids), batch):
+        end = start + batch
+        collection.upsert(
+            ids=ids[start:end],
+            documents=documents[start:end],
+            metadatas=metadatas[start:end],
+        )
+        written += len(ids[start:end])
+
+    return written
+
+
+# --------------------------------------------------------------------------
+# 删除
+# --------------------------------------------------------------------------
+def _delete_where(where: dict[str, Any]) -> int:
+    collection = get_collection()
+    try:
+        existing = collection.get(where=where, include=[])
+        count = len(existing.get("ids") or [])
+        if count:
+            collection.delete(where=where)
+        return count
+    except Exception as exc:  # 集合为空等
+        logger.warning("删除向量失败 where=%s: %s", where, exc)
+        return 0
+
+
+def delete_document(document_id: str) -> int:
+    return _delete_where({"document_id": document_id})
+
+
+def delete_knowledge_base(knowledge_base_id: str) -> int:
+    return _delete_where({"knowledge_base_id": knowledge_base_id})
+
+
+def delete_owner(owner_id: str) -> int:
+    return _delete_where({"owner_id": owner_id})
+
+
+# --------------------------------------------------------------------------
+# 统计
+# --------------------------------------------------------------------------
+def count_chunks(*, owner_id: str | None = None, knowledge_base_id: str | None = None,
+                 document_id: str | None = None) -> int:
+    where: dict[str, Any] = {}
+    if owner_id:
+        where["owner_id"] = owner_id
+    if knowledge_base_id:
+        where["knowledge_base_id"] = knowledge_base_id
+    if document_id:
+        where["document_id"] = document_id
+
+    try:
+        collection = get_collection()
+        if not where:
+            return int(collection.count())
+        result = collection.get(where=where, include=[])
+        return len(result.get("ids") or [])
+    except Exception as exc:
+        logger.warning("统计向量数量失败：%s", exc)
+        return 0
+
+
+def count_by_knowledge_base(knowledge_base_ids: list[str]) -> dict[str, int]:
+    """批量统计每个知识库的切片数，避免列表接口 N+1。"""
+    if not knowledge_base_ids:
+        return {}
+    try:
+        collection = get_collection()
+        counts: dict[str, int] = {kb_id: 0 for kb_id in knowledge_base_ids}
+        # Chroma 的 $in 过滤器对空列表不友好，但这里已保证非空
+        result = collection.get(
+            where={"knowledge_base_id": {"$in": list(knowledge_base_ids)}}, include=["metadatas"]
+        )
+        for metadata in result.get("metadatas") or []:
+            kb_id = (metadata or {}).get("knowledge_base_id")
+            if kb_id in counts:
+                counts[kb_id] += 1
+        return counts
+    except Exception as exc:
+        logger.warning("按知识库统计向量失败：%s", exc)
+        return {kb_id: 0 for kb_id in knowledge_base_ids}
+
+
+# --------------------------------------------------------------------------
+# 检索
+# --------------------------------------------------------------------------
+def search(
+    db: Any,  # 保留形参以兼容既有调用签名（引擎层传入会话），当前实现不需要数据库
+    query_text: str,
+    *,
+    owner_id: str,
+    knowledge_base_ids: list[str] | None = None,
+    top_k: int = 5,
+    score_threshold: float = 0.2,
+    hybrid: bool | None = None,
+) -> list[RetrievedChunk]:
+    """检索相关切片。
+
+    实现要点：
+      - owner_id 在**向量库层面**过滤，确保不会跨用户召回（安全边界）；
+      - knowledge_base_ids 在候选集上二次过滤（Chroma 的 $in 对动态列表较脆弱）；
+      - 混合检索开启时先取较大候选池，再用 0.5×向量 + 0.5×词面 重排。
+    """
+    use_hybrid = settings.HYBRID_SEARCH if hybrid is None else hybrid
+    limit = max(1, top_k)
+
+    try:
+        collection = get_collection()
+        n_fetch = max(limit, HYBRID_POOL) if use_hybrid else limit
+
+        if embeddings.is_zhipu_configured():
+            query_vector = embeddings.get_embeddings().embed_query(query_text)
+            result = collection.query(
+                query_embeddings=[query_vector],
+                n_results=n_fetch,
+                where={"owner_id": owner_id},
+                include=["documents", "metadatas", "distances"],
+            )
+        else:
+            result = collection.query(
+                query_texts=[query_text],
+                n_results=n_fetch,
+                where={"owner_id": owner_id},
+                include=["documents", "metadatas", "distances"],
+            )
+    except VectorStoreUnavailable:
+        raise
+    except Exception as exc:
+        logger.warning("向量检索失败：%s", exc)
+        return []
+
+    documents = (result.get("documents") or [[]])[0]
+    metadatas = (result.get("metadatas") or [[]])[0]
+    distances = (result.get("distances") or [[]])[0]
+    ids = (result.get("ids") or [[]])[0]
+
+    allowed = set(knowledge_base_ids) if knowledge_base_ids else None
+
+    candidates: list[RetrievedChunk] = []
+    lexical_scores: list[int] = []
+    for index, content in enumerate(documents):
+        metadata = (metadatas[index] if index < len(metadatas) else {}) or {}
+        if allowed is not None and metadata.get("knowledge_base_id") not in allowed:
+            continue
+
+        distance = distances[index] if index < len(distances) else None
+        page = metadata.get("page_label")
+        candidates.append(
+            RetrievedChunk(
+                chunk_id=ids[index] if index < len(ids) else f"#{index}",
+                document_id=str(metadata.get("document_id") or ""),
+                document_name=str(metadata.get("document_name") or ""),
+                knowledge_base_id=str(metadata.get("knowledge_base_id") or ""),
+                knowledge_base_name=str(metadata.get("knowledge_base_name") or ""),
+                content=content or "",
+                page=int(page) if isinstance(page, int) and page > 0 else None,
+                score=_distance_to_similarity(distance),
+                ordinal=int(metadata.get("ordinal") or 0),
+            )
+        )
+        lexical_scores.append(lexical_score(query_text, content or ""))
+
+    if not candidates:
+        return []
+
+    if use_hybrid and any(lexical_scores):
+        max_lexical = max(lexical_scores) or 1
+        for position, candidate in enumerate(candidates):
+            lexical = lexical_scores[position] / max_lexical
+            candidate.score = round(
+                VECTOR_WEIGHT * candidate.score + LEXICAL_WEIGHT * lexical, 4
+            )
+
+    candidates.sort(key=lambda item: item.score, reverse=True)
+
+    filtered = [item for item in candidates if item.score >= score_threshold]
+    if filtered:
+        return filtered[:limit]
+
+    # 阈值过滤后为空但确有候选：退化为 Top-K。
+    # 原因见 docs/development-report.md 9.9：弱向量模型下相似度整体偏低，
+    # 严格套用阈值会导致「传了文档却总说未找到依据」。
+    return candidates[:limit]
+
+
+def health() -> dict[str, Any]:
+    """向量库自检，供 /api/health 展示。"""
+    info: dict[str, Any] = {
+        "collection": collection_name(),
+        "persistDir": str(_persist_dir()),
+        "embedding": embeddings.describe(),
+        "hybridSearch": settings.HYBRID_SEARCH,
+    }
+    try:
+        collection = get_collection()
+        info["available"] = True
+        info["totalChunks"] = int(collection.count())
+    except VectorStoreUnavailable as exc:
+        info["available"] = False
+        info["error"] = str(exc)
+    except Exception as exc:
+        info["available"] = False
+        info["error"] = str(exc)
+    return info
+
+
+def timed(fn, *args, **kwargs):
+    """简易计时包装，便于日志观察检索耗时。"""
+    started = time.time()
+    result = fn(*args, **kwargs)
+    return result, (time.time() - started) * 1000

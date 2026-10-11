@@ -1,0 +1,55 @@
+# 创智杯 RAG 知识问答系统 · 后端依赖
+# 安装：pip install -r requirements.txt
+# 版本下限按 Python 3.11+ 实测可用；本机在 Python 3.14.6 上验证通过。
+
+# ---- Web 框架 ----
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9          # 文件上传（multipart/form-data）
+
+# ---- 配置与校验 ----
+pydantic>=2.7
+pydantic-settings>=2.3
+
+# ---- 关系型数据库（MySQL）----
+# aiomysql 是纯 Python 实现，无需编译，新版本 Python 也能直接装
+sqlalchemy[asyncio]>=2.0         # [asyncio] 会带上 greenlet，异步引擎必需
+aiomysql>=0.2.0                  # MySQL 异步驱动
+cryptography>=42.0               # MySQL 8 的 caching_sha2_password 认证需要
+# 无 MySQL 时可用 SQLite 临时替代：DATABASE_URL=sqlite+aiosqlite:///./data/app.db
+aiosqlite>=0.20
+
+# ---- 鉴权 ----
+python-jose[cryptography]>=3.3   # JWT 签发与校验
+bcrypt>=4.1                      # 密码哈希（不经 passlib，避免其版本探测缺陷）
+
+# ---- 异步任务队列 ----
+celery[redis]>=5.4
+redis>=5.0
+
+# ---- 向量库与向量化（方案同 rag/ 模块）----
+chromadb>=1.0.0                  # 向量库
+langchain-chroma>=1.0.0          # Chroma 的 LangChain 集成
+langchain-community>=0.4.0       # 提供 ZhipuAIEmbeddings 与各类文档加载器
+langchain-core>=1.0.0
+langchain-text-splitters>=1.0.0  # 递归字符切片
+zhipuai>=2.1.5                   # 智谱 SDK：embedding-3 向量化
+numpy>=1.26
+
+# ---- 文档解析 ----
+# 说明：这里**刻意不装 unstructured**。Word 的 LangChain 加载器
+# （UnstructuredWordDocumentLoader）依赖 unstructured，而它会引入 langdetect ——
+# 该包只有源码分发、没有 wheel，在较新的 Python（实测 3.14）上需要现场编译，
+# 且会把整个依赖解析拖到卡死。解析层因此在加载器不可用时自动回退到内置实现：
+#   .docx → python-docx（含段落、标题层级与表格）
+#   .md   → 内置按标题切节
+# 两者都已实测可用，见 verify_capabilities.py。
+python-docx>=1.1                 # .docx 解析（含表格）
+pypdf>=4.2                       # .pdf 解析（保留页码）
+openpyxl>=3.1                    # .xlsx
+python-pptx>=0.6.23              # .pptx
+
+# ---- 大模型调用（生成环节）----
+# DeepSeek 等只提供生成接口（/chat/completions），没有 /embeddings，
+# 因此向量化必须用智谱 embedding-3，两者分工不同。
+httpx>=0.27
