@@ -25,8 +25,9 @@
 
 - [开发报告](docs/development-report.md) — 已完成工作、技术选型、验证记录、已知问题与下一步计划
 - [前端接口与 SSE 协议约定](docs/frontend-api.md) — REST 接口、`text/event-stream` 事件格式、数据模型
-- [多人协作说明](docs/collaboration.md) — 邀请协作者、保护 `main`、分支/PR 流程、令牌与 SSH 配置
 - [前端说明](client/README.md) — 目录结构、功能清单、自检脚本、界面截图
+- [多人协作说明](docs/collaboration.md) — 邀请协作者、保护 `main`、分支/PR 流程、令牌与 SSH 配置
+- [RAG 检索模块](rag/README.md) — PDF 切片、向量化入 ChromaDB、检索验证（Python，与主项目独立）
 
 ## 项目结构
 
@@ -51,6 +52,10 @@
 ├── server/                     后端：Node.js + Express
 │   ├── .env.example            环境变量模板
 │   └── src/index.js            入口，含 /api/health 健康检查
+├── rag/                        RAG 检索模块（Python，与主项目独立）
+│   ├── build_db.py             PDF → 切片 → 向量化 → ChromaDB
+│   ├── query_db.py             检索验证（支持混合检索）
+│   └── README.md               使用说明
 ├── docs/
 │   ├── development-report.md
 │   ├── frontend-api.md
