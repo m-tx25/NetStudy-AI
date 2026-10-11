@@ -1,5 +1,6 @@
 <script setup>
 import { RouterLink } from 'vue-router'
+import { ArrowLeft } from '@element-plus/icons-vue'
 
 import AuthFooter from '@/components/auth/AuthFooter.vue'
 import AuthPanel from '@/components/auth/AuthPanel.vue'
@@ -13,49 +14,58 @@ defineProps({
 </script>
 
 <template>
-  <div class="flex min-h-screen flex-col bg-[#f5f7fa] dark:bg-[#141414]">
+  <div class="flex min-h-screen flex-col app-bg">
+    <!-- 顶部条：返回首页 + 登录/注册互切 -->
+    <header
+      class="relative z-20 flex h-16 shrink-0 items-center gap-3 border-b app-border px-5 sm:px-8"
+    >
+      <RouterLink :to="{ name: 'home' }" class="flex shrink-0 items-center gap-2.5">
+        <span
+          class="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-brand-light to-brand text-sm font-bold text-white shadow-lg shadow-brand/25"
+        >
+          R
+        </span>
+        <span class="hidden text-[15px] font-semibold tracking-tight app-text sm:block">
+          {{ APP_TITLE }}
+        </span>
+      </RouterLink>
+
+      <RouterLink
+        :to="{ name: 'home' }"
+        class="ml-4 hidden items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] app-muted transition app-hover hover-app-text sm:inline-flex"
+      >
+        <el-icon><ArrowLeft /></el-icon>
+        返回首页
+      </RouterLink>
+
+      <div class="ml-auto flex items-center gap-2.5 text-xs app-muted">
+        <span class="hidden sm:inline">{{ mode === 'login' ? '还没有账号？' : '已有账号？' }}</span>
+        <RouterLink
+          :to="mode === 'login' ? { name: 'register' } : { name: 'login' }"
+          class="tech-button rounded-xl px-3.5 py-2 font-medium"
+        >
+          {{ mode === 'login' ? '免费注册' : '去登录' }}
+        </RouterLink>
+      </div>
+    </header>
+
     <div class="flex min-h-0 flex-1">
-      <!-- 左侧品牌区（lg 以上显示） -->
+      <!-- 左侧品牌区（lg 以上显示，占据剩余整块空间） -->
       <AuthPanel />
 
       <!-- 右侧表单区 -->
-      <div class="flex flex-1 flex-col items-center justify-center px-5 py-8 sm:px-8 lg:py-12">
+      <div class="flex flex-1 flex-col items-center justify-center px-5 py-10 sm:px-8 lg:py-14">
         <div class="w-full max-w-[420px]">
-          <!-- 移动端品牌头 -->
-          <div class="mb-5 flex items-center justify-between lg:hidden">
-            <div class="flex items-center gap-2.5">
-              <span
-                class="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-brand to-emerald-600 text-sm font-bold text-white"
-              >
-                R
-              </span>
-              <span class="text-[15px] font-semibold text-[#0d0d0d] dark:text-[#ececec]">
-                {{ APP_TITLE }}
-              </span>
-            </div>
-            <RouterLink
-              :to="mode === 'login' ? { name: 'register' } : { name: 'login' }"
-              class="text-xs font-medium text-brand hover:underline"
-            >
-              {{ mode === 'login' ? '免费注册' : '返回登录' }}
-            </RouterLink>
-          </div>
-
-          <!-- 桌面端右上角切换入口 -->
-          <div class="mb-4 hidden items-center justify-end gap-2.5 text-xs text-[#8c8c8c] lg:flex">
-            <span>{{ mode === 'login' ? '还没有账号？' : '已有账号？' }}</span>
-            <RouterLink
-              :to="mode === 'login' ? { name: 'register' } : { name: 'login' }"
-              class="rounded-lg border border-black/[0.08] bg-white px-3 py-1.5 font-medium text-[#3d3d3d] transition hover:border-brand/50 hover:text-brand dark:border-white/10 dark:bg-white/5 dark:text-[#dcdcdc]"
-            >
-              {{ mode === 'login' ? '免费注册' : '去登录' }}
-            </RouterLink>
-          </div>
+          <RouterLink
+            :to="{ name: 'home' }"
+            class="mb-5 inline-flex items-center gap-1.5 text-xs app-muted transition hover-app-accent lg:hidden"
+          >
+            <el-icon><ArrowLeft /></el-icon>
+            返回首页
+          </RouterLink>
 
           <!-- 表单卡片 -->
-          <div
-            class="rounded-2xl border border-black/[0.06] bg-white p-7 shadow-[0_24px_70px_-34px_rgba(15,23,42,0.4)] sm:p-8 dark:border-white/10 dark:bg-[#1f1f1f]"
-          >
+          <div class="rounded-2xl tech-glass p-7 shadow-2xl sm:p-8">
             <slot />
           </div>
 

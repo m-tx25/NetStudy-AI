@@ -81,7 +81,7 @@ function regenerate() {
       <!-- 加载历史消息 -->
       <div
         v-if="chatStore.messagesLoading"
-        class="flex h-full items-center justify-center gap-2 text-sm text-[#8e8e8e]"
+        class="flex h-full items-center justify-center gap-2 text-sm app-muted"
       >
         <el-icon class="animate-spin"><Loading /></el-icon>
         正在加载对话记录…
@@ -92,13 +92,15 @@ function regenerate() {
         v-else-if="!messages.length"
         class="mx-auto flex min-h-full w-full max-w-3xl flex-col items-center justify-center px-4 py-10"
       >
-        <div class="grid h-12 w-12 place-items-center rounded-2xl bg-brand text-xl font-bold text-white">
+        <div
+          class="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-brand-light to-brand text-xl font-bold text-white shadow-lg shadow-brand/25"
+        >
           R
         </div>
-        <h1 class="mt-4 text-center text-xl font-semibold text-[#0d0d0d] md:text-2xl dark:text-[#ececec]">
+        <h1 class="mt-4 text-center text-xl font-semibold app-text md:text-2xl">
           有什么可以帮你的？
         </h1>
-        <p class="mt-2 text-center text-sm text-[#8e8e8e]">
+        <p class="mt-2 text-center text-sm app-muted">
           回答基于你上传的知识库文档检索生成
           <template v-if="chatStore.selectedKnowledgeBaseIds.length">
             · 当前检索 {{ chatStore.selectedKnowledgeBaseIds.length }} 个知识库
@@ -110,14 +112,14 @@ function regenerate() {
           <button
             v-for="example in examples"
             :key="example.title"
-            class="group rounded-2xl border border-[#e5e5e5] bg-white p-4 text-left transition hover:border-brand/50 hover:shadow-md dark:border-[#3a3a3a] dark:bg-[#2a2a2a]"
+            class="group rounded-2xl border app-border app-canvas p-4 text-left transition tech-lift hover:border-brand-light/50"
             @click="ask(example.text)"
           >
-            <p class="flex items-center gap-2 text-sm font-medium text-[#0d0d0d] dark:text-[#ececec]">
+            <p class="flex items-center gap-2 text-sm font-medium app-text">
               <span>{{ example.icon }}</span>
               {{ example.title }}
             </p>
-            <p class="mt-1 line-clamp-2 text-xs leading-5 text-[#8e8e8e]">
+            <p class="mt-1 line-clamp-2 text-xs leading-5 app-muted">
               {{ example.text }}
             </p>
           </button>
@@ -153,7 +155,7 @@ function regenerate() {
     >
       <button
         v-if="!atBottom"
-        class="absolute bottom-4 left-1/2 grid h-9 w-9 -translate-x-1/2 place-items-center rounded-full border border-[#e5e5e5] bg-white text-[#5d5d5d] shadow-md transition hover:bg-[#f5f5f5] dark:border-[#3a3a3a] dark:bg-[#2f2f2f] dark:text-[#b4b4b4]"
+        class="absolute bottom-4 left-1/2 grid h-9 w-9 -translate-x-1/2 place-items-center rounded-full border app-border app-elevated app-muted shadow-md transition app-hover hover-app-text"
         title="回到底部"
         @click="scrollToBottom(true)"
       >

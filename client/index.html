@@ -1,11 +1,33 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" class="dark">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="基于 RAG 的知识问答系统：上传文档、构建知识库、流式智能问答" />
+    <meta name="description" content="基于 RAG 的知识问答系统：上传文档、构建知识库、流式智能问答，答案可溯源" />
+    <meta name="theme-color" content="#0b0e12" />
     <title>RAG 知识问答系统</title>
+    <style>
+      /* 首屏防白闪：默认深灰底（主题切换后由 JS 接管） */
+      html,
+      body {
+        margin: 0;
+        background-color: #0b0e12;
+      }
+      html:not(.dark) body {
+        background-color: #f4f5f6;
+      }
+    </style>
+    <script>
+      // 在样式生效前尽早套用用户上次选择的主题，避免深/浅色闪一下
+      try {
+        var saved = localStorage.getItem('rag.theme')
+        if (saved === 'light') document.documentElement.classList.remove('dark')
+        else document.documentElement.classList.add('dark')
+      } catch (e) {
+        /* ignore */
+      }
+    </script>
   </head>
   <body>
     <div id="app"></div>

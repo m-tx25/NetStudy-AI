@@ -22,6 +22,25 @@ function check(name, ok, detail = '') {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? `  -> ${detail}` : ''}`)
 }
 
+/**
+ * 轮询等待页面进入期望状态（Mock 的 sleep 与真实渲染都有随机性，固定 delay 容易假失败）。
+ * @param {import('./lib/cdp.mjs').Cdp} cdp
+ * @param {string} expression 返回布尔值的表达式
+ * @param {{ timeout?: number, interval?: number }} options
+ */
+async function waitFor(cdp, expression, { timeout = 9000, interval = 250 } = {}) {
+  const deadline = Date.now() + timeout
+  for (;;) {
+    try {
+      if (await cdp.evaluate(expression)) return true
+    } catch {
+      /* 页面正在跳转，忽略后重试 */
+    }
+    if (Date.now() >= deadline) return false
+    await delay(interval)
+  }
+}
+
 /** 注入到页面里的通用工具：绕过框架的受控输入，直接触发 input 事件 */
 const HELPERS = `
   const setValue = (el, value) => {
@@ -132,9 +151,9 @@ async function main() {
     await delay(400)
 
     // 未登录访问受保护路由会被拦回登录页
-    await cdp.goto(`${APP_ORIGIN}/chat`)
+    await cdp.goto(`${APP_ORIGIN}/app/chat`)
     await delay(1200)
-    check('未登录访问 /chat 会被重定向到登录页',
+    check('未登录访问 /app/chat 会被重定向到登录页',
       (await cdp.evaluate('location.pathname')) === '/login')
 
     /* ============================================================ *
@@ -147,7 +166,9 @@ async function main() {
       return clickByText('登 录')
     })()`)
     check('提交登录表单', loggedIn === true)
-    await delay(2000)
+    await delay(600)
+    // 登录是「请求 → 写 session → 跳转」三步，等页面真正进入问答页再看断言
+    await waitFor(cdp, `location.pathname === '/app/chat' && document.body.innerText.includes('有什么可以帮你的')`)
 
     const afterLogin = await cdp.evaluate(`(() => ({
       path: location.pathname,
@@ -157,7 +178,7 @@ async function main() {
       storedUser: (() => { try { return JSON.parse(localStorage.getItem('rag.user'))?.username } catch { return '' } })(),
     }))()`)
     check('登录成功并进入问答页',
-      afterLogin.path === '/chat' && afterLogin.hasWelcome, JSON.stringify(afterLogin))
+      afterLogin.path === '/app/chat' && afterLogin.hasWelcome, JSON.stringify(afterLogin))
     check('侧边栏显示登录用户', afterLogin.sidebarUser === true)
     check('登录态已落盘 localStorage', afterLogin.storedUser === 'demo', afterLogin.storedUser)
 
@@ -166,20 +187,47 @@ async function main() {
      * ============================================================ */
     const clicked = await cdp.evaluate(`(() => {
       ${HELPERS}
-      return clickByText('总结文档要点')
+      // 欢迎页的示例卡片是 button，textContent 形如「📄总结文档要点请总结…」；
+      // 用 textContent（不受 innerText 布局换行与 emoji 影响）筛出长度最短的那个，
+      // 避免误点侧边栏里标题相同的会话条目
+      const el = [...document.querySelectorAll('button')]
+        .filter((node) => {
+          const text = (node.textContent || '').replace(/\\s+/g, '')
+          return text.includes('总结文档要点') && text.includes('请总结')
+        })
+        .sort((a, b) => a.textContent.length - b.textContent.length)[0]
+      if (el) el.click()
+      return !!el
     })()`)
     check('触发示例提问', clicked === true)
 
-    await delay(1500)
+    // 首次提问会「创建会话 → 写 store → 路由替换」，顺序不固定：
+    // 轮询等两个信号（生成中 / 路由已切换）都出现后再断言
+    await waitFor(
+      cdp,
+      `!!document.querySelector('.markdown-body.is-streaming')
+        || document.body.innerText.includes('正在检索知识库')
+        || location.pathname.startsWith('/app/chat/')`,
+      { timeout: 10000 },
+    )
+    const routed = await waitFor(cdp, `location.pathname.startsWith('/app/chat/')`, { timeout: 10000 })
     const midProbe = await cdp.evaluate(`(() => ({
-      hasTyping: document.body.innerText.includes('正在检索知识库')
-        || !!document.querySelector('.markdown-body.is-streaming'),
+      hasUserBubble: document.body.innerText.includes('请总结'),
+      streamSettled: !document.querySelector('.markdown-body.is-streaming'),
       path: location.pathname,
     }))()`)
-    check('流式过程中出现打字机 / 生成中状态', midProbe.hasTyping === true)
-    check('首次提问自动创建会话并切换路由', midProbe.path.startsWith('/chat/'), midProbe.path)
+    check('首次提问自动创建会话并切换路由', routed === true && midProbe.path.startsWith('/app/chat/'),
+      midProbe.path)
 
-    await delay(14000)
+    // 等正文与引用来源渲染出来（收尾会有一次 markdown 重排），
+    // 再等打字机把缓冲吐完（streaming 状态由打字机 drain 结束才置回 false）
+    await waitFor(
+      cdp,
+      `document.body.innerText.includes('结论') && document.body.innerText.includes('引用来源')`,
+      { timeout: 15000 },
+    )
+    await waitFor(cdp, `!document.querySelector('.markdown-body.is-streaming')`, { timeout: 40000 })
+    await delay(300)
 
     const doneProbe = await cdp.evaluate(`(() => {
       const text = document.body.innerText
@@ -209,7 +257,7 @@ async function main() {
     /* ============================================================ *
      * 4. 账号设置 —— 修改用户名 / 昵称
      * ============================================================ */
-    await cdp.goto(`${APP_ORIGIN}/settings`)
+    await cdp.goto(`${APP_ORIGIN}/app/settings`)
     await delay(1800)
 
     const settingsProbe = await cdp.evaluate(`(() => {
@@ -227,7 +275,7 @@ async function main() {
       }
     })()`)
     check('账号设置页渲染（资料 + 密码两张卡片）',
-      settingsProbe.path === '/settings' && settingsProbe.hasProfileCard && settingsProbe.hasPasswordCard,
+      settingsProbe.path === '/app/settings' && settingsProbe.hasProfileCard && settingsProbe.hasPasswordCard,
       JSON.stringify({ path: settingsProbe.path }))
     check('账号设置页有账号概览与只读信息',
       settingsProbe.hasOverview && settingsProbe.infoRows)
@@ -374,14 +422,14 @@ async function main() {
       }
     })()`)
     check('新用户名 + 新密码登录成功',
-      finalProbe.path === '/chat' && finalProbe.storedUsername === 'zhanggong' && finalProbe.hasWelcome,
+      finalProbe.path === '/app/chat' && finalProbe.storedUsername === 'zhanggong' && finalProbe.hasWelcome,
       JSON.stringify(finalProbe))
     check('登录后侧边栏仍显示昵称「张工」', finalProbe.sidebarName === true)
 
     /* ============================================================ *
      * 7. 知识库页 + 主题切换
      * ============================================================ */
-    await cdp.goto(`${APP_ORIGIN}/knowledge`)
+    await cdp.goto(`${APP_ORIGIN}/app/knowledge`)
     await delay(2000)
     const kbProbe = await cdp.evaluate(`(() => {
       const text = document.body.innerText
@@ -394,24 +442,32 @@ async function main() {
         docNames: (text.match(/\\.(pdf|md|docx)/g) || []).length,
       }
     })()`)
-    check('知识库页渲染', kbProbe.path === '/knowledge' && kbProbe.hasTitle === true)
+    check('知识库页渲染', kbProbe.path === '/app/knowledge' && kbProbe.hasTitle === true)
     check('知识库列表与文档表格渲染',
       kbProbe.hasBase && kbProbe.hasUploadBtn && kbProbe.hasTableHeader, JSON.stringify(kbProbe))
     check('文档行有数据', kbProbe.docNames >= 2, `matches=${kbProbe.docNames}`)
 
+    // 主题切换在侧边栏用户菜单里（知识库页没有独立的主题按钮）
     await cdp.evaluate(`(() => {
-      const btn = [...document.querySelectorAll('button')].find((b) => (b.title || '').includes('切换为'))
-      if (btn) btn.click()
-      return true
+      const trigger = [...document.querySelectorAll('button')].find((b) => (b.innerText || '').includes('@example.com'))
+      if (trigger) trigger.click()
+      return !!trigger
     })()`)
-    await delay(400)
+    await delay(500)
+    const themeClicked = await cdp.evaluate(`(() => {
+      const item = [...document.querySelectorAll('.el-dropdown-menu__item')]
+        .find((node) => (node.innerText || '').includes('切换为'))
+      if (item) item.click()
+      return !!item
+    })()`)
+    await delay(500)
     const themeProbe = await cdp.evaluate(`(() => ({
       isDark: document.documentElement.classList.contains('dark'),
       stored: localStorage.getItem('rag.theme'),
     }))()`)
     check('主题切换写入 html.dark 与 localStorage',
-      ['dark', 'light'].includes(themeProbe.stored) && themeProbe.isDark === (themeProbe.stored === 'dark'),
-      JSON.stringify(themeProbe))
+      themeClicked === true && ['dark', 'light'].includes(themeProbe.stored) && themeProbe.isDark === (themeProbe.stored === 'dark'),
+      JSON.stringify({ themeClicked, ...themeProbe }))
 
     check('运行期无未捕获异常 / console.error', consoleErrors.length === 0,
       consoleErrors.slice(0, 3).join(' | '))
