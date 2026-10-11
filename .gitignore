@@ -33,3 +33,21 @@ coverage/
 
 # npm 本地缓存（本机安装依赖时指定在工作区内）
 .npm-cache/
+
+# Python（rag/ 目录）
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+rag/.env
+rag/.pylibs/
+
+# 向量库（本地生成，体积大，可用 build_db.py 重建；不入库）
+chroma_db/
+rag/chroma_db/
+
+# 原始语料（体积大，不入库）
+rag/*.pdf
+
+# pip 遗留的临时目录（含拒绝删除权限项，无法清理，忽略）
+.tmp-pip/
