@@ -6,6 +6,7 @@
 
 - [开发报告](docs/development-report.md) — 已完成工作、技术选型、验证记录、已知问题与下一步计划
 - [多人协作说明](docs/collaboration.md) — 邀请协作者、保护 `main`、分支/PR 流程、令牌与 SSH 配置
+- [RAG 检索模块](rag/README.md) — PDF 切片、向量化入 ChromaDB、检索验证（Python，与主项目独立）
 
 ## 项目结构
 
@@ -21,9 +22,15 @@
 │       ├── router/         路由
 │       ├── stores/         Pinia 状态
 │       └── views/          页面
-└── server/                 后端：Node.js + Express
-    ├── .env.example        环境变量模板
-    └── src/index.js        入口，含 /api/health 健康检查
+├── server/                 后端：Node.js + Express
+│   ├── .env.example        环境变量模板
+│   └── src/index.js        入口，含 /api/health 健康检查
+├── rag/                    RAG 检索模块（Python，独立）
+│   ├── build_db.py         PDF → 切片 → 向量化 → ChromaDB
+│   └── query_db.py         检索验证
+└── scripts/                环境适配与自检脚本
+    ├── patch-vite-windows.mjs  修复 Vite 的 spawn EPERM（Windows 受限环境）
+    └── verify-connectivity.mjs 前后端连通性自检
 ```
 
 ## 环境要求
