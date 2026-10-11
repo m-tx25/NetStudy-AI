@@ -128,10 +128,10 @@ onMounted(() => {
 
 <template>
   <AuthShell mode="login">
-    <h2 class="text-[22px] font-semibold tracking-tight text-[#0d0d0d] dark:text-[#ececec]">
+    <h2 class="text-[22px] font-semibold tracking-tight app-text">
       登录
     </h2>
-    <p class="mt-1.5 text-[13px] text-[#8c8c8c]">使用你的 {{ APP_TITLE }} 账号继续</p>
+    <p class="mt-1.5 text-[13px] app-muted">使用你的 {{ APP_TITLE }} 账号继续</p>
 
     <el-form
       ref="formRef"
@@ -168,7 +168,7 @@ onMounted(() => {
         <el-checkbox v-model="form.remember">记住账号</el-checkbox>
         <button
           type="button"
-          class="text-[13px] text-brand underline-offset-2 transition hover:underline"
+          class="text-[13px] app-accent underline-offset-2 transition hover:underline"
           @click="forgotVisible = true"
         >
           忘记密码？
@@ -176,13 +176,13 @@ onMounted(() => {
       </div>
 
       <el-checkbox v-model="form.agreed" class="!mb-4 !h-auto !items-start !whitespace-normal">
-        <span class="text-[12px] leading-5 text-[#8c8c8c]">
+        <span class="text-[12px] leading-5 app-muted">
           我已阅读并同意
-          <button type="button" class="text-brand hover:underline" @click.stop="openPolicy('terms')">
+          <button type="button" class="app-accent hover:underline" @click.stop="openPolicy('terms')">
             《服务协议》
           </button>
           与
-          <button type="button" class="text-brand hover:underline" @click.stop="openPolicy('privacy')">
+          <button type="button" class="app-accent hover:underline" @click.stop="openPolicy('privacy')">
             《隐私政策》
           </button>
         </span>
@@ -230,7 +230,7 @@ onMounted(() => {
         ：已预填 <code>demo / 123456</code>；也可用任意用户名 + 6 位以上密码登录。
       </div>
 
-      <p v-else class="px-1 text-center text-[11px] leading-5 text-[#9a9a9a]">
+      <p v-else class="px-1 text-center text-[11px] leading-5 app-faint">
         登录即表示你同意我们按照《隐私政策》处理你的账号信息
       </p>
     </template>

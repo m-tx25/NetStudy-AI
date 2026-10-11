@@ -99,11 +99,11 @@ async function handleDelete(conversation) {
 
 async function handleCommand(command) {
   if (command === 'settings') {
-    go('/settings')
+    go('/app/settings')
     return
   }
   if (command === 'knowledge') {
-    go('/knowledge')
+    go('/app/knowledge')
     return
   }
   if (command === 'theme') {
@@ -143,19 +143,19 @@ async function handleCommand(command) {
 </script>
 
 <template>
-  <div class="flex h-full flex-col bg-[#f9f9f9] dark:bg-[#171717]">
+  <div class="flex h-full flex-col app-sidebar-bg">
     <!-- 品牌区 -->
     <div class="flex items-center gap-2 px-3 pb-1 pt-3">
       <button
-        class="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition hover:bg-black/5 dark:hover:bg-white/10"
-        @click="go('/chat')"
+        class="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition app-hover"
+        @click="go('/app/chat')"
       >
         <span
-          class="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-brand text-[13px] font-bold text-white"
+          class="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-brand-light to-brand text-[13px] font-bold text-white"
         >
           R
         </span>
-        <span class="truncate text-sm font-semibold text-[#0d0d0d] dark:text-[#ececec]">
+        <span class="truncate text-sm font-semibold app-text">
           {{ APP_TITLE }}
         </span>
         <span
@@ -167,7 +167,7 @@ async function handleCommand(command) {
       </button>
 
       <button
-        class="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[#5d5d5d] transition hover:bg-black/5 md:hidden dark:text-[#b4b4b4] dark:hover:bg-white/10"
+        class="grid h-8 w-8 shrink-0 place-items-center rounded-lg app-muted transition app-hover hover-app-text md:hidden"
         title="收起"
         @click="emit('navigate')"
       >
@@ -178,7 +178,7 @@ async function handleCommand(command) {
     <!-- 新建对话 -->
     <div class="px-3 pb-2 pt-1">
       <button
-        class="flex w-full items-center gap-2 rounded-xl border border-[#e5e5e5] bg-white px-3 py-2 text-sm font-medium text-[#0d0d0d] shadow-sm transition hover:bg-[#f2f2f2] dark:border-[#3a3a3a] dark:bg-transparent dark:text-[#ececec] dark:hover:bg-white/10"
+        class="tech-button flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium"
         @click="handleNewChat"
       >
         <el-icon class="text-base"><Plus /></el-icon>
@@ -200,7 +200,7 @@ async function handleCommand(command) {
     <!-- 会话列表 -->
     <nav class="scrollbar-thin mt-1 flex-1 overflow-y-auto px-2 pb-3">
       <template v-for="group in groups" :key="group.label">
-        <p class="select-none px-2 pb-1 pt-3 text-xs font-medium text-[#8e8e8e]">
+        <p class="select-none px-2 pb-1 pt-3 text-xs font-medium app-muted">
           {{ group.label }}
         </p>
         <div
@@ -209,12 +209,12 @@ async function handleCommand(command) {
           class="group relative flex items-center rounded-lg transition"
           :class="
             activeId === conversation.id
-              ? 'bg-[#e3e3e3] dark:bg-[#3a3a3a]'
-              : 'hover:bg-[#ececec] dark:hover:bg-[#2f2f2f]'
+              ? 'app-active'
+              : 'app-hover'
           "
         >
           <button
-            class="min-w-0 flex-1 truncate px-3 py-2 text-left text-sm text-[#0d0d0d] dark:text-[#ececec]"
+            class="min-w-0 flex-1 truncate px-3 py-2 text-left text-sm app-text"
             :title="conversation.title"
             @click="openConversation(conversation.id)"
           >
@@ -225,14 +225,14 @@ async function handleCommand(command) {
             class="mr-1 flex shrink-0 items-center opacity-100 transition md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100"
           >
             <button
-              class="grid h-7 w-7 place-items-center rounded-md text-[#5d5d5d] hover:bg-black/10 dark:text-[#b4b4b4] dark:hover:bg-white/15"
+              class="grid h-7 w-7 place-items-center rounded-md app-muted transition app-hover hover-app-text"
               title="重命名"
               @click.stop="handleRename(conversation)"
             >
               <el-icon :size="14"><Edit /></el-icon>
             </button>
             <button
-              class="grid h-7 w-7 place-items-center rounded-md text-[#5d5d5d] hover:bg-black/10 hover:text-red-600 dark:text-[#b4b4b4] dark:hover:bg-white/15"
+              class="grid h-7 w-7 place-items-center rounded-md app-muted transition app-hover hover:text-red-500"
               title="删除"
               @click.stop="handleDelete(conversation)"
             >
@@ -244,7 +244,7 @@ async function handleCommand(command) {
 
       <div
         v-if="chatStore.conversationsLoading"
-        class="flex items-center justify-center gap-2 py-6 text-xs text-[#8e8e8e]"
+        class="flex items-center justify-center gap-2 py-6 text-xs app-muted"
       >
         <el-icon class="animate-spin"><Loading /></el-icon>
         加载中…
@@ -252,42 +252,42 @@ async function handleCommand(command) {
 
       <p
         v-else-if="!groups.length"
-        class="px-3 py-6 text-center text-xs leading-5 text-[#8e8e8e]"
+        class="px-3 py-6 text-center text-xs leading-5 app-muted"
       >
         {{ keyword ? '没有匹配的会话' : '还没有对话，点上方「新建对话」开始提问吧' }}
       </p>
     </nav>
 
     <!-- 底部功能区 -->
-    <div class="border-t border-[#e5e5e5] px-2 py-2 dark:border-[#2f2f2f]">
+    <div class="border-t app-border px-2 py-2">
       <button
-        class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-[#0d0d0d] transition hover:bg-[#ececec] dark:text-[#ececec] dark:hover:bg-[#2f2f2f]"
-        :class="{ 'bg-[#e3e3e3] dark:bg-[#3a3a3a]': route.path.startsWith('/knowledge') }"
-        @click="go('/knowledge')"
+        class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm app-text transition app-hover"
+        :class="{ 'app-active': route.path.startsWith('/app/knowledge') }"
+        @click="go('/app/knowledge')"
       >
         <el-icon class="text-base"><Setting /></el-icon>
         <span class="flex-1 text-left">知识库管理</span>
-        <span v-if="knowledgeCount" class="text-xs text-[#8e8e8e]">{{ knowledgeCount }}</span>
+        <span v-if="knowledgeCount" class="text-xs app-muted">{{ knowledgeCount }}</span>
       </button>
 
       <el-dropdown trigger="click" placement="top-start" class="mt-1 w-full" @command="handleCommand">
         <button
-          class="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition hover:bg-[#ececec] dark:hover:bg-[#2f2f2f]"
+          class="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition app-hover"
         >
           <span
-            class="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand text-xs font-semibold text-white"
+            class="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-gradient-to-br from-brand-light to-brand text-xs font-semibold text-white"
           >
             {{ userStore.avatarText }}
           </span>
           <span class="min-w-0 flex-1">
-            <span class="block truncate text-sm text-[#0d0d0d] dark:text-[#ececec]">
+            <span class="block truncate text-sm app-text">
               {{ userStore.displayName }}
             </span>
-            <span class="block truncate text-[11px] text-[#8e8e8e]">
+            <span class="block truncate text-[11px] app-muted">
               {{ userStore.profile?.email || '已登录' }}
             </span>
           </span>
-          <el-icon class="text-[#8e8e8e]"><More /></el-icon>
+          <el-icon class="app-muted"><More /></el-icon>
         </button>
 
         <template #dropdown>

@@ -144,7 +144,7 @@ async function submit() {
     </el-upload>
 
     <div v-if="selectedFiles.length" class="mt-4">
-      <div class="mb-2 flex items-center justify-between text-xs text-[#8e8e8e]">
+      <div class="mb-2 flex items-center justify-between text-xs app-muted">
         <span>待上传 {{ selectedFiles.length }} 个文件</span>
         <span>共 {{ formatBytes(totalSize) }}</span>
       </div>
@@ -153,15 +153,15 @@ async function submit() {
         <li
           v-for="(file, index) in selectedFiles"
           :key="`${file.name}-${file.size}-${index}`"
-          class="flex items-center gap-2 rounded-lg border border-[#e5e5e5] px-3 py-2 dark:border-[#3a3a3a]"
+          class="flex items-center gap-2 rounded-lg border app-border px-3 py-2"
         >
-          <el-icon class="shrink-0 text-brand"><Document /></el-icon>
-          <span class="min-w-0 flex-1 truncate text-sm text-[#0d0d0d] dark:text-[#ececec]">
+          <el-icon class="shrink-0 app-accent"><Document /></el-icon>
+          <span class="min-w-0 flex-1 truncate text-sm app-text">
             {{ file.name }}
           </span>
-          <span class="shrink-0 text-xs text-[#8e8e8e]">{{ formatBytes(file.size) }}</span>
+          <span class="shrink-0 text-xs app-muted">{{ formatBytes(file.size) }}</span>
           <button
-            class="grid h-6 w-6 shrink-0 place-items-center rounded text-[#8e8e8e] transition hover:bg-black/5 hover:text-red-500 dark:hover:bg-white/10"
+            class="grid h-6 w-6 shrink-0 place-items-center rounded app-muted transition app-hover hover:text-red-500"
             title="移除"
             @click="removeFile(index)"
           >
@@ -173,21 +173,21 @@ async function submit() {
 
     <!-- 上传 / 解析进度 -->
     <div v-if="knowledgeStore.uploadTasks.length" class="mt-4 space-y-2">
-      <p class="text-xs text-[#8e8e8e]">处理进度</p>
+      <p class="text-xs app-muted">处理进度</p>
       <div
         v-for="task in knowledgeStore.uploadTasks"
         :key="task.id"
-        class="rounded-lg bg-[#f7f7f8] px-3 py-2 dark:bg-[#2a2a2a]"
+        class="rounded-lg app-panel px-3 py-2"
       >
         <div class="flex items-center justify-between gap-2 text-xs">
-          <span class="min-w-0 flex-1 truncate text-[#0d0d0d] dark:text-[#ececec]">
+          <span class="min-w-0 flex-1 truncate app-text">
             {{ task.name }}
           </span>
           <span
             :class="{
-              'text-brand': task.status === 'done',
+              'app-accent': task.status === 'done',
               'text-red-500': task.status === 'failed',
-              'text-[#8e8e8e]': task.status === 'uploading' || task.status === 'processing',
+              'app-muted': task.status === 'uploading' || task.status === 'processing',
             }"
           >
             {{ statusText(task) }}
@@ -206,7 +206,7 @@ async function submit() {
     <template #footer>
       <div class="flex items-center justify-between">
         <button
-          class="text-xs text-[#8e8e8e] hover:text-brand disabled:opacity-40"
+          class="text-xs app-muted transition hover-app-accent disabled:opacity-40"
           :disabled="submitting || !knowledgeStore.uploadTasks.length"
           @click="knowledgeStore.clearFinishedTasks()"
         >

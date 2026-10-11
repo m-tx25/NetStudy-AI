@@ -32,7 +32,7 @@ function typeColor(name = '') {
   if (['doc', 'docx'].includes(ext)) return 'text-blue-500'
   if (['xls', 'xlsx', 'csv'].includes(ext)) return 'text-emerald-500'
   if (['md', 'markdown', 'txt'].includes(ext)) return 'text-slate-500'
-  return 'text-brand'
+  return 'app-accent'
 }
 </script>
 
@@ -48,15 +48,15 @@ function typeColor(name = '') {
       <template #default="{ row }">
         <div class="flex items-center gap-2.5 py-1">
           <span
-            class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-black/5 dark:bg-white/10"
+            class="grid h-8 w-8 shrink-0 place-items-center rounded-lg app-panel"
           >
             <el-icon class="text-base" :class="typeColor(row.name)"><Document /></el-icon>
           </span>
           <span class="min-w-0">
-            <span class="block truncate text-sm text-[#0d0d0d] dark:text-[#ececec]" :title="row.name">
+            <span class="block truncate text-sm app-text" :title="row.name">
               {{ row.name }}
             </span>
-            <span class="block text-[11px] text-[#8e8e8e]">
+            <span class="block text-[11px] app-muted">
               {{ extensionOf(row.name) }} · {{ formatBytes(row.size) }}
             </span>
           </span>
@@ -74,7 +74,7 @@ function typeColor(name = '') {
 
     <el-table-column label="向量片段" width="100" align="right">
       <template #default="{ row }">
-        <span class="text-sm text-[#5d5d5d] dark:text-[#b4b4b4]">
+        <span class="text-sm app-text-secondary">
           {{ row.chunks ?? '-' }}
         </span>
       </template>
@@ -92,7 +92,7 @@ function typeColor(name = '') {
 
     <el-table-column label="上传时间" width="170">
       <template #default="{ row }">
-        <span class="text-xs text-[#8e8e8e]">{{ formatDateTime(row.uploadedAt || row.createdAt) }}</span>
+        <span class="text-xs app-muted">{{ formatDateTime(row.uploadedAt || row.createdAt) }}</span>
       </template>
     </el-table-column>
 
@@ -113,7 +113,7 @@ function typeColor(name = '') {
     </el-table-column>
 
     <template #empty>
-      <div class="py-10 text-center text-sm text-[#8e8e8e]">
+      <div class="py-10 text-center text-sm app-muted">
         <p>这个知识库还没有文档</p>
         <p class="mt-1 text-xs">点击右上角「上传文档」添加你的第一份资料</p>
       </div>

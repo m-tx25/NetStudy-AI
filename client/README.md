@@ -12,11 +12,14 @@
 # 1. 安装依赖（在仓库根目录执行，npm --prefix 转发，一次装好 client 与 server）
 npm run install:all
 
-# 2. 启动前端
-npm run dev:client          # 等价于 npm run dev:client
+# 2. 启动（在仓库根目录执行）
+npm run dev                 # 前端 + 后端一起起；只想要前端就用 npm run dev:client
 
 # 3. 打开 http://localhost:5173
 ```
+
+> 在 `client/` 目录里也可以直接 `npm run dev`；但如果你在**仓库根目录**执行 `npm run dev` 报
+> `Missing script: "dev"`，说明根 `package.json` 还是旧版本，用 `npm run dev:client` 即可。
 
 > 默认开启 **Mock 演示模式**（`client/.env.development` 中 `VITE_USE_MOCK=true`），
 > 不需要后端即可完整体验：登录、流式问答、知识库与文档上传管理都会有模拟数据。
@@ -75,7 +78,8 @@ client/
     │   ├── chat.js           # 会话列表、消息、流式状态、检索参数
     │   └── knowledge.js      # 知识库、文档、上传任务
     ├── composables/
-    │   ├── useTheme.js       # 明暗主题（写入 html.dark）
+    │   ├── useTheme.js       # 明暗主题（默认深色，写入 html.dark）
+    │   ├── useReveal.js      # 首页滚动入场动画（IntersectionObserver）
     │   ├── useTypewriter.js  # 打字机缓冲队列
     │   └── useSidebar.js     # 移动端侧边栏抽屉
     ├── utils/
@@ -86,17 +90,31 @@ client/
     │   └── notify.js         # 去重的错误提示
     ├── layouts/AppLayout.vue # 侧边栏 + 主区域
     ├── components/
+    │   ├── landing/SiteFooter.vue
     │   ├── layout/AppSidebar.vue
     │   ├── chat/{ChatHeader,MessageList,MessageItem,MessageInput,KnowledgeSelector}.vue
     │   ├── knowledge/{DocumentTable,UploadDialog}.vue
-    │   └── auth/AuthPanel.vue
+    │   └── auth/{AuthPanel,AuthFooter,PasswordStrength,PolicyDialog,ForgotPasswordDialog}.vue
     └── views/
+        ├── HomeView.vue       # 落地首页（公开、整屏可滚动）
         ├── LoginView.vue      # 登录
         ├── RegisterView.vue   # 注册
         ├── ChatView.vue       # 智能问答
         ├── KnowledgeView.vue  # 知识库与文档管理
+        ├── SettingsView.vue   # 账号设置
         └── NotFoundView.vue   # 404
 ```
+
+### 路由一览
+
+| 路径 | 页面 | 权限 |
+| --- | --- | --- |
+| `/` | 落地首页（产品介绍 + 登录按钮） | 公开 |
+| `/login`、`/register` | 登录 / 注册 | 仅未登录 |
+| `/app/chat`、`/app/chat/:id` | 智能问答 | 需登录 |
+| `/app/knowledge` | 知识库管理 | 需登录 |
+| `/app/settings` | 账号设置 | 需登录 |
+| `/chat`、`/knowledge`、`/settings` | 历史链接，自动重定向到 `/app/*` | — |
 
 ---
 
@@ -106,6 +124,8 @@ client/
 
 | 页面 | 文件 |
 | --- | --- |
+| 落地首页 | [`00-home.png`](../docs/screenshots/00-home.png) |
+| 首页下滑内容 | [`00b-home-scroll.png`](../docs/screenshots/00b-home-scroll.png) |
 | 登录 | [`01-login.png`](../docs/screenshots/01-login.png) |
 | 注册 | [`02-register.png`](../docs/screenshots/02-register.png) |
 | 问答欢迎页 | [`03-chat-welcome.png`](../docs/screenshots/03-chat-welcome.png) |
@@ -113,16 +133,25 @@ client/
 | 回答完成 + 引用来源 | [`05-chat-answer.png`](../docs/screenshots/05-chat-answer.png) |
 | 知识库管理 | [`06-knowledge.png`](../docs/screenshots/06-knowledge.png) |
 | 上传弹窗 | [`07-upload-dialog.png`](../docs/screenshots/07-upload-dialog.png) |
-| 深色主题 | [`08-chat-dark.png`](../docs/screenshots/08-chat-dark.png) |
+| 浅色主题 | [`10-chat-light.png`](../docs/screenshots/10-chat-light.png) |
+| 账号设置 | [`08-settings-profile.png`](../docs/screenshots/08-settings-profile.png) |
 
 ---
 
 ## 五、功能一览
 
+### 0. 落地首页
+- 公开访问的整屏页面，`/` 不再是登录页；导航栏只有品牌、锚点导航、主题按钮与「登录 / 免费注册」。
+- 首屏占满一屏（`lg:min-h-[calc(100vh-4rem)]`），右侧是问答效果预览卡。
+- 页面可滚动，含关键数字、产品能力、四步使用流程、技术架构管线与分层、适用场景切换、常见问题折叠、收尾 CTA。
+- 滚动时淡入上浮（`useReveal` + IntersectionObserver），尊重 `prefers-reduced-motion`。
+- 已登录用户访问首页时按钮变成「进入工作台」，不强制跳转。
+
 ### 1. 登录 / 注册
+- 表单区始终占据右侧整块空间，左侧品牌面板只在 `lg` 以上显示，避免「一半一半」的观感。
 - Element Plus 表单校验（用户名长度、邮箱格式、密码强度、二次确认）。
 - 登录成功后写入 Token 与用户信息；401 自动清理并跳回登录页（带 `redirect`）。
-- 未登录访问受保护路由会被守卫拦截。
+- 未登录访问 `/app/*` 会被守卫拦截到登录页。
 
 ### 2. 智能问答（ChatGPT 风格）
 - 左侧会话侧边栏：新建对话、搜索、按「今天 / 最近 7 天 / 更早」分组、重命名、删除。

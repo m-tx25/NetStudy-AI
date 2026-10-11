@@ -185,13 +185,13 @@ function goChat() {
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-col bg-white dark:bg-[#212121]">
+  <div class="flex h-full min-h-0 flex-col app-canvas">
     <!-- 顶部栏 -->
     <header
-      class="flex h-14 shrink-0 items-center gap-2 border-b border-[#e5e5e5] px-3 md:px-5 dark:border-[#2f2f2f]"
+      class="flex h-14 shrink-0 items-center gap-2 border-b app-border px-3 md:px-5"
     >
       <button
-        class="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[#5d5d5d] transition hover:bg-black/5 md:hidden dark:text-[#b4b4b4] dark:hover:bg-white/10"
+        class="grid h-9 w-9 shrink-0 place-items-center rounded-lg app-muted transition app-hover hover-app-text md:hidden"
         title="打开侧边栏"
         @click="openMobileSidebar"
       >
@@ -199,8 +199,8 @@ function goChat() {
       </button>
 
       <div class="min-w-0 flex-1">
-        <h1 class="truncate text-sm font-semibold text-[#0d0d0d] dark:text-[#ececec]">知识库管理</h1>
-        <p class="truncate text-[11px] text-[#8e8e8e]">
+        <h1 class="truncate text-sm font-semibold app-text">知识库管理</h1>
+        <p class="truncate text-[11px] app-muted">
           上传文档 → 自动解析分块 → 向量化入库 → 问答时按相似度召回
         </p>
       </div>
@@ -212,15 +212,15 @@ function goChat() {
     <div class="flex min-h-0 flex-1">
       <!-- 左：知识库列表（桌面端） -->
       <aside
-        class="hidden w-[268px] shrink-0 overflow-y-auto border-r border-[#e5e5e5] p-3 scrollbar-thin md:block dark:border-[#2f2f2f]"
+        class="hidden w-[268px] shrink-0 overflow-y-auto border-r app-border p-3 scrollbar-thin md:block"
       >
-        <div v-if="knowledgeStore.basesLoading" class="py-8 text-center text-xs text-[#8e8e8e]">
+        <div v-if="knowledgeStore.basesLoading" class="py-8 text-center text-xs app-muted">
           加载中…
         </div>
 
         <div
           v-else-if="!knowledgeStore.bases.length"
-          class="rounded-xl border border-dashed border-[#dcdcdc] p-4 text-center text-xs leading-5 text-[#8e8e8e] dark:border-[#3a3a3a]"
+          class="rounded-xl border border-dashed app-border-strong p-4 text-center text-xs leading-5 app-muted"
         >
           还没有知识库<br />点击右上角「新建知识库」开始
         </div>
@@ -232,23 +232,23 @@ function goChat() {
             class="group cursor-pointer rounded-xl border px-3 py-2.5 transition"
             :class="
               base.id === knowledgeStore.activeBaseId
-                ? 'border-brand/40 bg-brand/10'
-                : 'border-transparent hover:bg-black/5 dark:hover:bg-white/10'
+                ? 'border-brand-light/40 app-accent-soft'
+                : 'border-transparent app-hover'
             "
             @click="knowledgeStore.selectBase(base.id)"
           >
             <div class="flex items-start gap-2">
               <el-icon
                 class="mt-0.5 shrink-0 text-base"
-                :class="base.id === knowledgeStore.activeBaseId ? 'text-brand' : 'text-[#8e8e8e]'"
+                :class="base.id === knowledgeStore.activeBaseId ? 'app-accent' : 'app-muted'"
               >
                 <Collection />
               </el-icon>
               <div class="min-w-0 flex-1">
-                <p class="truncate text-sm font-medium text-[#0d0d0d] dark:text-[#ececec]">
+                <p class="truncate text-sm font-medium app-text">
                   {{ base.name }}
                 </p>
-                <p class="mt-0.5 truncate text-[11px] text-[#8e8e8e]">
+                <p class="mt-0.5 truncate text-[11px] app-muted">
                   {{ base.documentCount ?? 0 }} 篇 · {{ base.chunkCount ?? 0 }} 片段
                 </p>
               </div>
@@ -256,13 +256,13 @@ function goChat() {
 
             <div class="mt-1.5 flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100">
               <button
-                class="rounded px-1.5 py-0.5 text-[11px] text-[#8e8e8e] transition hover:bg-black/5 hover:text-brand dark:hover:bg-white/10"
+                class="rounded px-1.5 py-0.5 text-[11px] app-muted transition app-hover hover-app-accent"
                 @click.stop="openEditDialog(base)"
               >
                 编辑
               </button>
               <button
-                class="rounded px-1.5 py-0.5 text-[11px] text-[#8e8e8e] transition hover:bg-black/5 hover:text-red-500 dark:hover:bg-white/10"
+                class="rounded px-1.5 py-0.5 text-[11px] app-muted transition app-hover hover:text-red-500"
                 @click.stop="removeBase(base)"
               >
                 删除
@@ -272,7 +272,7 @@ function goChat() {
         </div>
 
         <button
-          class="mt-3 w-full rounded-xl border border-dashed border-[#dcdcdc] py-2 text-xs text-[#8e8e8e] transition hover:border-brand hover:text-brand dark:border-[#3a3a3a]"
+          class="mt-3 w-full rounded-xl border border-dashed app-border-strong py-2 text-xs app-muted transition hover:border-brand-light hover-app-accent"
           @click="openCreateDialog"
         >
           + 新建知识库
@@ -282,7 +282,7 @@ function goChat() {
       <!-- 右：文档区 -->
       <section class="flex min-w-0 flex-1 flex-col">
         <!-- 移动端知识库切换 -->
-        <div class="border-b border-[#e5e5e5] p-3 md:hidden dark:border-[#2f2f2f]">
+        <div class="border-b app-border p-3 md:hidden">
           <el-select
             :model-value="knowledgeStore.activeBaseId"
             placeholder="选择知识库"
@@ -300,13 +300,13 @@ function goChat() {
 
         <template v-if="activeBase">
           <!-- 知识库信息 -->
-          <div class="border-b border-[#e5e5e5] px-4 py-4 md:px-6 dark:border-[#2f2f2f]">
+          <div class="border-b app-border px-4 py-4 md:px-6">
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div class="min-w-0">
-                <h2 class="truncate text-base font-semibold text-[#0d0d0d] dark:text-[#ececec]">
+                <h2 class="truncate text-base font-semibold app-text">
                   {{ activeBase.name }}
                 </h2>
-                <p class="mt-1 text-xs leading-5 text-[#8e8e8e]">
+                <p class="mt-1 text-xs leading-5 app-muted">
                   {{ activeBase.description || '暂无描述' }}
                 </p>
               </div>
@@ -319,8 +319,8 @@ function goChat() {
 
             <div class="mt-3 flex flex-wrap gap-x-6 gap-y-2">
               <div v-for="stat in baseStats" :key="stat.label">
-                <p class="text-[11px] text-[#8e8e8e]">{{ stat.label }}</p>
-                <p class="text-sm font-medium text-[#0d0d0d] dark:text-[#ececec]">{{ stat.value }}</p>
+                <p class="text-[11px] app-muted">{{ stat.label }}</p>
+                <p class="text-sm font-medium app-text">{{ stat.value }}</p>
               </div>
             </div>
           </div>
@@ -334,7 +334,7 @@ function goChat() {
               :prefix-icon="Search"
               class="max-w-[240px]"
             />
-            <span class="text-xs text-[#8e8e8e]">
+            <span class="text-xs app-muted">
               共 {{ documents.length }} 个文档
               <template v-if="knowledgeStore.keyword">
                 （全部 {{ knowledgeStore.documents.length }} 个）
@@ -358,8 +358,8 @@ function goChat() {
         </template>
 
         <div v-else class="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
-          <el-icon class="text-4xl text-[#d0d0d0]"><Collection /></el-icon>
-          <p class="text-sm text-[#8e8e8e]">请选择或创建一个知识库</p>
+          <el-icon class="text-4xl app-faint"><Collection /></el-icon>
+          <p class="text-sm app-muted">请选择或创建一个知识库</p>
           <el-button type="primary" :icon="Plus" @click="openCreateDialog">新建知识库</el-button>
         </div>
       </section>
@@ -393,7 +393,7 @@ function goChat() {
             placeholder="简单说明这个知识库放什么资料，方便团队协作"
           />
         </el-form-item>
-        <p v-if="baseDialogMode === 'create'" class="text-xs leading-5 text-[#8e8e8e]">
+        <p v-if="baseDialogMode === 'create'" class="text-xs leading-5 app-muted">
           创建后即可上传文档。文档会经过解析 → 分块 → 向量化，完成后自动参与问答检索。
         </p>
       </el-form>

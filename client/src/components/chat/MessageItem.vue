@@ -78,20 +78,20 @@ async function handleContentClick(event) {
 <template>
   <div
     class="group animate-fade-up px-3 py-4 md:px-6"
-    :class="isUser ? 'bg-transparent' : 'bg-[#f7f7f8] dark:bg-[#1c1c1c]'"
+    :class="isUser ? 'bg-transparent' : 'app-panel'"
   >
     <div class="mx-auto flex w-full max-w-3xl gap-3 md:gap-4" :class="isUser ? 'flex-row-reverse' : ''">
       <!-- 头像 -->
       <div class="shrink-0 pt-0.5">
         <span
           v-if="isUser"
-          class="grid h-7 w-7 place-items-center rounded-full bg-[#5d5d5d] text-xs font-semibold text-white"
+          class="grid h-7 w-7 place-items-center rounded-full border app-border app-elevated text-xs font-semibold app-text-secondary"
         >
           我
         </span>
         <span
           v-else
-          class="grid h-7 w-7 place-items-center rounded-full bg-brand text-xs font-bold text-white"
+          class="grid h-7 w-7 place-items-center rounded-full bg-gradient-to-br from-brand-light to-brand text-xs font-bold text-white"
         >
           R
         </span>
@@ -101,7 +101,7 @@ async function handleContentClick(event) {
       <div class="min-w-0 flex-1" :class="isUser ? 'flex flex-col items-end' : ''">
         <template v-if="isUser">
           <div
-            class="max-w-[85%] whitespace-pre-wrap break-words rounded-3xl bg-[#f0f0f0] px-4 py-2.5 text-[15px] leading-relaxed text-[#0d0d0d] dark:bg-[#2f2f2f] dark:text-[#ececec]"
+            class="max-w-[85%] whitespace-pre-wrap break-words rounded-3xl border app-border app-elevated px-4 py-2.5 text-[15px] leading-relaxed app-text"
           >
             {{ message.content }}
           </div>
@@ -113,10 +113,10 @@ async function handleContentClick(event) {
             <span
               v-for="i in 3"
               :key="i"
-              class="h-1.5 w-1.5 animate-bounce-dot rounded-full bg-[#8e8e8e]"
+              class="h-1.5 w-1.5 animate-bounce-dot rounded-full bg-brand-light"
               :style="{ animationDelay: `${(i - 1) * 0.16}s` }"
             />
-            <span class="ml-2 text-xs text-[#8e8e8e]">正在检索知识库并生成回答…</span>
+            <span class="ml-2 text-xs app-muted">正在检索知识库并生成回答…</span>
           </div>
 
           <div
@@ -147,7 +147,7 @@ async function handleContentClick(event) {
 
           <p
             v-else-if="message.status === 'stopped'"
-            class="mt-2 text-xs text-[#8e8e8e]"
+            class="mt-2 text-xs app-muted"
           >
             已停止生成
           </p>
@@ -155,7 +155,7 @@ async function handleContentClick(event) {
           <!-- 引用来源 -->
           <div v-if="sources.length" class="mt-3">
             <div class="flex flex-wrap items-center gap-1.5">
-              <span class="inline-flex items-center gap-1 text-xs text-[#8e8e8e]">
+              <span class="inline-flex items-center gap-1 text-xs app-muted">
                 <el-icon :size="13"><Files /></el-icon>
                 引用来源 {{ sources.length }} 条
               </span>
@@ -165,8 +165,8 @@ async function handleContentClick(event) {
                 class="max-w-[180px] truncate rounded-full border px-2 py-0.5 text-[11px] transition"
                 :class="
                   expandedSourceId === source.key
-                    ? 'border-brand bg-brand/10 text-brand'
-                    : 'border-[#e0e0e0] text-[#5d5d5d] hover:border-brand/50 hover:text-brand dark:border-[#3a3a3a] dark:text-[#b4b4b4]'
+                    ? 'app-accent-soft border-brand-light/50'
+                    : 'app-border app-muted hover-app-accent hover:border-brand-light/50'
                 "
                 :title="source.documentName"
                 @click="toggleSource(source.key)"
@@ -184,16 +184,16 @@ async function handleContentClick(event) {
               <div
                 v-if="expandedSource"
                 :key="expandedSource.key"
-                class="mt-2 rounded-xl border border-[#e5e5e5] bg-white p-3 text-xs dark:border-[#3a3a3a] dark:bg-[#242424]"
+                class="mt-2 rounded-xl border app-border app-canvas p-3 text-xs"
               >
                 <div class="flex flex-wrap items-center justify-between gap-2">
-                  <span class="font-medium text-[#0d0d0d] dark:text-[#ececec]">
+                  <span class="font-medium app-text">
                     [{{ expandedSource.index }}] {{ expandedSource.documentName }}
-                    <span v-if="expandedSource.page" class="font-normal text-[#8e8e8e]">
+                    <span v-if="expandedSource.page" class="font-normal app-muted">
                       · 第 {{ expandedSource.page }} 页
                     </span>
                   </span>
-                  <span class="flex items-center gap-2 text-[#8e8e8e]">
+                  <span class="flex items-center gap-2 app-muted">
                     <span v-if="expandedSource.knowledgeBaseName">
                       {{ expandedSource.knowledgeBaseName }}
                     </span>
@@ -204,7 +204,7 @@ async function handleContentClick(event) {
                     </span>
                   </span>
                 </div>
-                <p class="mt-1.5 leading-5 text-[#5d5d5d] dark:text-[#b4b4b4]">
+                <p class="mt-1.5 leading-5 app-text-secondary">
                   {{ expandedSource.snippet }}
                 </p>
               </div>
@@ -213,10 +213,10 @@ async function handleContentClick(event) {
 
           <!-- 操作区 -->
           <div
-            class="mt-2 flex items-center gap-1 text-[#8e8e8e] opacity-100 transition md:opacity-0 md:group-hover:opacity-100"
+            class="mt-2 flex items-center gap-1 app-muted opacity-100 transition md:opacity-0 md:group-hover:opacity-100"
           >
             <button
-              class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs transition hover:bg-black/5 hover:text-[#0d0d0d] dark:hover:bg-white/10 dark:hover:text-[#ececec]"
+              class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs transition app-hover hover-app-text"
               @click="handleCopy(message.content)"
             >
               <el-icon :size="13"><CopyDocument /></el-icon>
@@ -224,7 +224,7 @@ async function handleContentClick(event) {
             </button>
             <button
               v-if="isLastAssistant && !streaming"
-              class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs transition hover:bg-black/5 hover:text-[#0d0d0d] dark:hover:bg-white/10 dark:hover:text-[#ececec]"
+              class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs transition app-hover hover-app-text"
               @click="emit('regenerate')"
             >
               <el-icon :size="13"><Refresh /></el-icon>

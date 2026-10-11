@@ -27,7 +27,7 @@ watch(
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-col bg-white dark:bg-[#212121]">
+  <div class="flex h-full min-h-0 flex-col app-canvas">
     <ChatHeader />
     <div class="min-h-0 flex-1">
       <MessageList />

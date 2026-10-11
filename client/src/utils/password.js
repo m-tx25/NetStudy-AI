@@ -41,7 +41,7 @@ export function evaluatePassword(input, username = '') {
       level: 'empty',
       label: '未填写',
       percent: 0,
-      color: 'bg-[#e2e2e2] dark:bg-[#3a3a3a]',
+      color: 'app-active',
       tips: ['建议使用 8 位以上，包含大小写字母、数字与符号的组合'],
     }
   }
@@ -58,11 +58,11 @@ export function evaluatePassword(input, username = '') {
   if (value.length < PASSWORD_MIN_LENGTH) score = Math.min(score, 1)
 
   const levels = {
-    0: { level: 'empty', label: '未填写', color: 'bg-[#e2e2e2] dark:bg-[#3a3a3a]' },
+    0: { level: 'empty', label: '未填写', color: 'app-active' },
     1: { level: 'weak', label: '弱', color: 'bg-red-500' },
     2: { level: 'fair', label: '一般', color: 'bg-amber-500' },
     3: { level: 'good', label: '强', color: 'bg-emerald-500' },
-    4: { level: 'strong', label: '很强', color: 'bg-brand' },
+    4: { level: 'strong', label: '很强', color: 'bg-brand-light' },
   }
 
   const tips = []

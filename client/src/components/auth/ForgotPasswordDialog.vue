@@ -64,7 +64,7 @@ function onClosed() {
     @closed="onClosed"
   >
     <template v-if="!sent">
-      <p class="mb-5 text-[13px] leading-6 text-[#7a7a7a] dark:text-[#a0a0a0]">
+      <p class="mb-5 text-[13px] leading-6 app-text-secondary">
         输入你的用户名与注册邮箱，我们会向你发送一封密码重置邮件。
       </p>
 
@@ -88,19 +88,19 @@ function onClosed() {
         </el-form-item>
       </el-form>
 
-      <p class="text-[11px] leading-5 text-[#9a9a9a]">
+      <p class="text-[11px] leading-5 app-faint">
         出于安全考虑，无论账号是否存在，我们都会返回相同的结果。
       </p>
     </template>
 
     <div v-else class="py-2 text-center">
-      <div class="mx-auto grid h-12 w-12 place-items-center rounded-full bg-brand/10 text-brand">
+      <div class="mx-auto grid h-12 w-12 place-items-center rounded-full app-accent-soft">
         <el-icon :size="24"><Message /></el-icon>
       </div>
-      <p class="mt-4 text-sm font-medium text-[#0d0d0d] dark:text-[#ececec]">
+      <p class="mt-4 text-sm font-medium app-text">
         重置链接已发送至 {{ form.email }}
       </p>
-      <p class="mt-2 text-[13px] leading-6 text-[#8c8c8c]">
+      <p class="mt-2 text-[13px] leading-6 app-muted">
         请在 30 分钟内点击邮件中的链接完成重置。若未收到，请检查垃圾邮件目录，
         或联系管理员协助处理。
       </p>

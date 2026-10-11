@@ -194,13 +194,13 @@ async function savePassword() {
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-col bg-white dark:bg-[#212121]">
+  <div class="flex h-full min-h-0 flex-col app-canvas">
     <!-- 顶部栏 -->
     <header
-      class="flex h-14 shrink-0 items-center gap-2 border-b border-[#e5e5e5] px-3 md:px-5 dark:border-[#2f2f2f]"
+      class="flex h-14 shrink-0 items-center gap-2 border-b app-border px-3 md:px-5"
     >
       <button
-        class="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[#5d5d5d] transition hover:bg-black/5 md:hidden dark:text-[#b4b4b4] dark:hover:bg-white/10"
+        class="grid h-9 w-9 shrink-0 place-items-center rounded-lg app-muted transition app-hover hover-app-text md:hidden"
         title="打开侧边栏"
         @click="openMobileSidebar"
       >
@@ -208,8 +208,8 @@ async function savePassword() {
       </button>
 
       <div class="min-w-0 flex-1">
-        <h1 class="truncate text-sm font-semibold text-[#0d0d0d] dark:text-[#ececec]">账号设置</h1>
-        <p class="truncate text-[11px] text-[#8e8e8e]">
+        <h1 class="truncate text-sm font-semibold app-text">账号设置</h1>
+        <p class="truncate text-[11px] app-muted">
           管理你的账号资料与登录密码
         </p>
       </div>
@@ -219,40 +219,40 @@ async function savePassword() {
       <div class="mx-auto w-full max-w-3xl px-4 py-6 md:px-6 md:py-8">
         <!-- 账号概览 -->
         <section
-          class="flex flex-wrap items-center gap-4 rounded-2xl border border-[#ececec] bg-[#fafbfc] p-5 dark:border-[#333] dark:bg-white/[0.03]"
+          class="flex flex-wrap items-center gap-4 rounded-2xl border app-border app-panel p-5"
         >
           <span
-            class="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-brand to-emerald-600 text-xl font-semibold text-white shadow-lg shadow-brand/20"
+            class="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-brand-light to-brand text-xl font-semibold text-white shadow-lg shadow-brand/25"
           >
             {{ previewInitial }}
           </span>
           <div class="min-w-0 flex-1">
             <p class="flex items-center gap-2">
-              <span class="truncate text-base font-semibold text-[#0d0d0d] dark:text-[#ececec]">
+              <span class="truncate text-base font-semibold app-text">
                 {{ previewName }}
               </span>
               <span
-                class="shrink-0 rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand"
+                class="shrink-0 rounded-full app-accent-soft px-2 py-0.5 text-[11px] font-medium"
               >
                 {{ userStore.roleLabel }}
               </span>
             </p>
-            <p class="mt-0.5 truncate text-xs text-[#8e8e8e]">
+            <p class="mt-0.5 truncate text-xs app-muted">
               {{ userStore.username }} · {{ userStore.email }}
             </p>
           </div>
-          <p class="text-[11px] text-[#a0a0a0]">
+          <p class="text-[11px] app-faint">
             侧边栏显示「{{ previewName }}」
           </p>
         </section>
 
         <!-- 账号资料 -->
-        <section class="mt-6 rounded-2xl border border-[#ececec] p-5 md:p-6 dark:border-[#333]">
+        <section class="mt-6 rounded-2xl border app-border p-5 md:p-6">
           <div class="flex items-center gap-2">
-            <el-icon class="text-base text-brand"><UserFilled /></el-icon>
-            <h2 class="text-[15px] font-semibold text-[#0d0d0d] dark:text-[#ececec]">账号资料</h2>
+            <el-icon class="text-base app-accent"><UserFilled /></el-icon>
+            <h2 class="text-[15px] font-semibold app-text">账号资料</h2>
           </div>
-          <p class="mt-1 text-xs leading-5 text-[#8e8e8e]">
+          <p class="mt-1 text-xs leading-5 app-muted">
             用户名是你的登录账号，修改后需要用新的用户名登录；昵称只影响界面展示。
           </p>
 
@@ -322,21 +322,21 @@ async function savePassword() {
           </el-form>
 
           <!-- 只读的账号信息 -->
-          <div class="mt-6 grid gap-x-6 gap-y-3 border-t border-[#f0f0f0] pt-5 sm:grid-cols-2 dark:border-[#333]">
+          <div class="mt-6 grid gap-x-6 gap-y-3 border-t app-border pt-5 sm:grid-cols-2">
             <div v-for="item in accountInfo" :key="item.label" class="flex items-center justify-between gap-3">
-              <span class="text-xs text-[#9a9a9a]">{{ item.label }}</span>
-              <span class="truncate text-xs text-[#4d4d4d] dark:text-[#c4c4c4]">{{ item.value }}</span>
+              <span class="text-xs app-faint">{{ item.label }}</span>
+              <span class="truncate text-xs app-text-secondary">{{ item.value }}</span>
             </div>
           </div>
         </section>
 
         <!-- 修改密码 -->
-        <section class="mt-6 rounded-2xl border border-[#ececec] p-5 md:p-6 dark:border-[#333]">
+        <section class="mt-6 rounded-2xl border app-border p-5 md:p-6">
           <div class="flex items-center gap-2">
-            <el-icon class="text-base text-brand"><Lock /></el-icon>
-            <h2 class="text-[15px] font-semibold text-[#0d0d0d] dark:text-[#ececec]">修改密码</h2>
+            <el-icon class="text-base app-accent"><Lock /></el-icon>
+            <h2 class="text-[15px] font-semibold app-text">修改密码</h2>
           </div>
-          <p class="mt-1 text-xs leading-5 text-[#8e8e8e]">
+          <p class="mt-1 text-xs leading-5 app-muted">
             修改成功后建议重新登录。请勿使用与其他网站相同的密码。
           </p>
 

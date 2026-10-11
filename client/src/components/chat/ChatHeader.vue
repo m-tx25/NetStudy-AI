@@ -31,10 +31,10 @@ function newChat() {
 
 <template>
   <header
-    class="flex h-14 shrink-0 items-center gap-2 border-b border-[#e5e5e5] bg-white px-3 md:px-5 dark:border-[#2f2f2f] dark:bg-[#212121]"
+    class="flex h-14 shrink-0 items-center gap-2 border-b app-border app-canvas px-3 md:px-5"
   >
     <button
-      class="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[#5d5d5d] transition hover:bg-black/5 md:hidden dark:text-[#b4b4b4] dark:hover:bg-white/10"
+      class="grid h-9 w-9 shrink-0 place-items-center rounded-lg app-muted transition app-hover hover-app-text md:hidden"
       title="打开侧边栏"
       @click="openMobileSidebar"
     >
@@ -42,16 +42,16 @@ function newChat() {
     </button>
 
     <div class="min-w-0 flex-1">
-      <h1 class="truncate text-sm font-semibold text-[#0d0d0d] dark:text-[#ececec]">
+      <h1 class="truncate text-sm font-semibold app-text">
         {{ title }}
       </h1>
-      <p class="truncate text-[11px] text-[#8e8e8e]">{{ subtitle }}</p>
+      <p class="truncate text-[11px] app-muted">{{ subtitle }}</p>
     </div>
 
     <KnowledgeSelector />
 
     <button
-      class="grid h-9 w-9 place-items-center rounded-lg text-[#5d5d5d] transition hover:bg-black/5 dark:text-[#b4b4b4] dark:hover:bg-white/10"
+      class="grid h-9 w-9 place-items-center rounded-lg app-muted transition app-hover hover-app-text"
       :title="isDark ? '切换为浅色' : '切换为深色'"
       @click="toggleTheme"
     >
@@ -59,7 +59,7 @@ function newChat() {
     </button>
 
     <button
-      class="hidden h-9 items-center gap-1.5 rounded-lg border border-[#e5e5e5] px-3 text-xs font-medium text-[#0d0d0d] transition hover:bg-black/5 sm:flex dark:border-[#3a3a3a] dark:text-[#ececec] dark:hover:bg-white/10"
+      class="tech-button hidden h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-medium sm:flex"
       @click="newChat"
     >
       <el-icon :size="14"><Plus /></el-icon>
