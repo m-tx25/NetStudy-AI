@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 
 from fastapi import APIRouter
@@ -31,7 +32,9 @@ async def health() -> dict:
         "llmConfigured": llm.is_configured(),
         "llmModel": settings.LLM_MODEL if llm.is_configured() else None,
         "database": database.describe(),
-        "vectorStore": vectorstore.health(),
+        # vectorstore.health() 内部会打开 Chroma 集合（同步阻塞），
+        # 而 /api/health 会被前端频繁轮询，必须丢线程池，否则会拖住事件循环
+        "vectorStore": await asyncio.to_thread(vectorstore.health),
         "chunking": chunking.describe(),
         "queue": check_queue_health(),
         # 兼容早期字段：前端首页只读取 ok/service/time

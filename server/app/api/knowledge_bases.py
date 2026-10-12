@@ -6,6 +6,7 @@
 任何影响文档或向量的操作都必须调用 refresh_counts 重新统计。
 """
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, HTTPException, status
@@ -37,7 +38,10 @@ async def refresh_counts(db: DbSession, knowledge_base_id: str) -> tuple[int, in
         )
     ).scalar_one()
 
-    chunk_count = vectorstore.count_chunks(knowledge_base_id=knowledge_base_id)
+    # 同步阻塞（Chroma 读），丢线程池避免冻住事件循环
+    chunk_count = await asyncio.to_thread(
+        vectorstore.count_chunks, knowledge_base_id=knowledge_base_id
+    )
 
     base = (
         await db.execute(select(KnowledgeBase).where(KnowledgeBase.id == knowledge_base_id))
@@ -63,7 +67,7 @@ async def counts_for(
         )
     ).all()
     documents = {kb_id: count for kb_id, count in document_rows}
-    chunks = vectorstore.count_by_knowledge_base(knowledge_base_ids)
+    chunks = await asyncio.to_thread(vectorstore.count_by_knowledge_base, knowledge_base_ids)
 
     return {
         kb_id: (int(documents.get(kb_id, 0)), int(chunks.get(kb_id, 0)))

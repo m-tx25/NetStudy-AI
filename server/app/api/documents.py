@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 
@@ -201,12 +202,12 @@ async def update_document(
         document.enabled = payload.enabled
         if payload.enabled:
             # 重新启用：把向量写回（此前停用时已移除）
-            vectorstore.delete_document(document.id)
+            await asyncio.to_thread(vectorstore.delete_document, document.id)
             if document.status == "ready" and document.stored_path:
                 await _reindex_vectors(db, document)
         else:
             # 停用即从向量库移除，确保检索不会命中已停用文档
-            vectorstore.delete_document(document.id)
+            await asyncio.to_thread(vectorstore.delete_document, document.id)
 
     document.updated_at = now_utc()
     await db.flush()
@@ -237,7 +238,10 @@ async def _reindex_vectors(db: DbSession, document: Document) -> None:
                     int(page) if isinstance(page, (int, float)) and page else None,
                 )
             )
-        stored = vectorstore.add_chunks(
+        # 同步阻塞调用（智谱 embedding + Chroma 写入）必须丢线程池，
+        # 否则会冻住事件循环，整个服务在向量化期间无响应。
+        stored = await asyncio.to_thread(
+            vectorstore.add_chunks,
             owner_id=base.owner_id,
             knowledge_base_id=base.id,
             knowledge_base_name=base.name,
@@ -264,7 +268,8 @@ async def delete_document(document_id: str, user: CurrentUser, db: DbSession) ->
     await refresh_counts(db, knowledge_base_id)
     await db.commit()
 
-    removed = vectorstore.delete_document(document_id)
+    # 同步阻塞（Chroma 删除），丢线程池避免冻住事件循环
+    removed = await asyncio.to_thread(vectorstore.delete_document, document_id)
     if removed:
         logger.info("已清理文档 %s 的向量 %s 条", document_id, removed)
 

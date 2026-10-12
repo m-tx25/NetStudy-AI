@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -128,7 +129,10 @@ async def stream_answer(
     db.add(user_message)
 
     # ---------- 4. 检索（ChromaDB：向量 + 词面混合） ----------
-    chunks = vectorstore.search(
+    # search() 内部要调 embedding HTTP 接口 + 查 Chroma，是同步阻塞的；
+    # 放在事件循环里会冻住整个服务（含其它接口），必须丢线程池。
+    chunks = await asyncio.to_thread(
+        vectorstore.search,
         db,
         question,
         owner_id=user.id,
