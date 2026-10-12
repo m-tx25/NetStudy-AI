@@ -17,9 +17,10 @@
 | 账号设置 | 修改昵称 / 用户名 / 邮箱，修改密码（校验当前密码，支持强制重新登录） |
 | 其他 | 深灰科技风主题（默认深色，可切浅色）、会话分组与重命名、检索范围与 Top-K 参数、移动端自适应 |
 
-> 前端默认跑在 **Mock 演示模式**（`client/.env.development` 里 `VITE_USE_MOCK=true`），
-> 没有后端也能完整体验全部交互。接真实后端时把它改成 `false` 并重启 dev server。
-> 后端目前只实现了 `/api/health`，业务接口清单见 [前端接口约定](docs/frontend-api.md)。
+> 前后端**已打通**：`client/.env.development` 里 `VITE_USE_MOCK=false`，前端直接请求真实后端。
+> 后端已实现全部业务接口（鉴权 / 会话 / 知识库 / 文档 / 流式问答），
+> 接口契约见 [前端接口约定](docs/frontend-api.md)。
+> 若想脱离后端体验界面，把该值改成 `true` 即可回到内置 Mock 模式。
 
 ## 文档
 
@@ -52,11 +53,10 @@
 ├── server/                     后端：Node.js + Express
 │   ├── .env.example            环境变量模板
 │   └── src/index.js            入口，含 /api/health 健康检查
-├── rag/                        RAG 检索模块（Python，与主项目独立）
+├── rag/                        RAG 检索脚本（独立命令行工具，可选）
 │   ├── build_db.py             PDF → 切片 → 向量化 → ChromaDB
 │   ├── query_db.py             检索验证（支持混合检索）
 │   └── README.md               使用说明
-│       └── views/              登录 / 注册 / 问答 / 知识库 / 账号设置 / 404
 ├── server/                     后端：Python + FastAPI（详见 server/README.md）
 │   ├── app/
 │   │   ├── main.py             入口、CORS、统一错误处理
@@ -149,8 +149,8 @@ npm run dev -- --client  # 只起前端（Mock 模式足够体验全部功能）
 npm run dev -- --server  # 只起后端
 ```
 
-> 注意：根目录**没有**单独的 `npm run dev` 之外的简写，旧文档里写的 `npm run dev:client` / `npm run dev:server`
-> 依然可用；如果你在根目录直接执行 `npm run dev` 报 `Missing script: "dev"`，说明拿到的是本次改动之前的代码。
+> 说明：根目录的脚本通过 `npm --prefix` 转发到 `client/`，本身不含业务逻辑。
+> 若根目录执行 `npm run dev` 报 `Missing script: "dev"`，说明拿到的是较早版本的代码。
 
 **方式二：两个终端分别启动**
 
@@ -173,17 +173,13 @@ Mock 模式下登录表单已预填 `demo / 123456`，直接点「登 录」或�
 
 ### 接入真实后端
 
-前端默认跑在 Mock 模式，不会请求后端。要联调真实接口，编辑 `client/.env.development`：
+前端**当前已接真实后端**（`client/.env.development` 里 `VITE_USE_MOCK=false`），
+无需额外改动即可联调。相关说明：
 
-```ini
-VITE_USE_MOCK=false
-```
-
-改完**重启前端 dev server** 生效。演示账号 `demo / 123456` 在后端首次启动时自动创建，
-数据与 Mock 内容一致，因此切换后界面看到的仍是同一套知识库与文档。
-
-> 想真正生成回答还需在 `server/.env` 填入 `LLM_API_KEY`；
-> 未填写时检索与引用溯源正常工作，生成阶段会返回可读的错误提示。
+- 改完 `VITE_USE_MOCK` 后需**重启前端 dev server** 才生效。
+- 演示账号 `demo / 123456` 在后端首次启动时自动创建，数据与 Mock 内容一致。
+- 想真正生成回答还需在 `server/.env` 填入 `LLM_API_KEY`；
+  未填写时检索与引用溯源正常工作，生成阶段会返回可读的错误提示。
 
 ## 常用命令
 
@@ -191,8 +187,7 @@ VITE_USE_MOCK=false
 | --- | --- | --- |
 | 根目录 | `npm run install:all` | 安装前后端依赖 |
 | 根目录 | `npm run dev` | 同时启动前端与后端（`-- --client` / `-- --server` 可只起其中一个） |
-| 根目录 | `npm run dev:client` / `npm run dev:server` | 只启动前端 / 后端 |
-| 根目录 | `npm run install:client` | 安装前端依赖 |
+| 根目录 | `npm run install:client` | 只安装前端依赖 |
 | 根目录 | `npm run dev:client` | 只启动前端 |
 | 根目录 | `npm run build` | 构建前端到 `client/dist` |
 | 根目录 | `npm run check:server` | 后端接口契约自检（需后端已启动） |
@@ -202,9 +197,9 @@ VITE_USE_MOCK=false
 | `client/` | `npm run check:build` | 检查构建产物（Tailwind 工具类、主题色覆盖） |
 | `client/` | `npm run check:e2e` | 无头浏览器端到端自检（需先启动 `npm run dev`） |
 | `client/` | `npm run screenshots` | 重新生成 `docs/screenshots` 下的截图 |
-| `server/` | `.\start.ps1` | 启动后端（自动建 venv、装依赖、热重载） |
+| `server/` | `.\.venv\Scripts\python.exe -m uvicorn app.main:app --port 3000` | 启动后端（等价于 `start.ps1`，推荐用它避开 PS 5.1 编码问题） |
+| `server/` | `.\start.ps1 [-Port 8000]` | 一键启动（自动建 venv、装依赖、生成 .env） |
 | `server/` | `.\.venv\Scripts\python -m celery -A app.tasks.celery_app worker -l info` | 启动异步 worker（需 Redis） |
-| `server/` | `.\start.ps1 -Port 8000` | 指定端口启动 |
 
 ## 开发约定
 
@@ -256,17 +251,18 @@ node ../scripts/patch-vite-windows.mjs --dry-run # 只检查、不写入
 > 该补丁没有挂到 `postinstall`：避免在协作者（可能是 macOS/Linux）的机器上因
 > 版本差异导致 `npm install` 整体失败。需要时手动执行即可。
 
-### 3. 后端热重载在受限环境下不可用
+### 3. 后端不启用热重载，且 start.ps1 在 PowerShell 5.1 下可能报解析错
 
-`server` 的 `npm run dev` 用 nodemon，其依赖 `pstree.remy` 在导入时会 spawn 一个
-带管道 stdio 的子进程，在受限环境下启动即崩（`spawn EPERM`）。此时改用：
+后端是 Python + FastAPI。受限环境下建议**不要加 `--reload`**
+（热重载会额外启动一个监视进程并占用管道），直接前台运行即可：
 
-```bash
+```powershell
 cd server
-node src/index.js     # 等价于 npm start，无热重载，但服务功能完全正常
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 3000
 ```
 
-在普通环境下 `npm run dev` 可正常使用，无需此替代。
+`server\start.ps1` 亦可，但它在 **Windows PowerShell 5.1** 下可能因脚本中文编码
+（UTF-8 无 BOM）报「字符串缺少终止符」；遇到时用上面这条命令代替。
 
 ### 4. 连通性自检
 
@@ -278,6 +274,60 @@ node scripts/verify-connectivity.mjs
 
 它会检查：后端直连、前端首页、**经 5173 代理访问后端**、SFC 编译、后端 404 处理。
 全部通过即表示前后端已打通。
+
+## 排障：两个会导致「服务看起来彻底坏了」的坑
+
+这两个问题都已修复（见 `fix(server)` 提交），但**报错信息与真正原因相距很远**，
+记录下来避免重复排查。
+
+### 1. 向量化总是失败：`'ZhipuAIEmbeddings' object has no attribute 'name'`
+
+**现象**：文档全部停在 `failed`、`chunks=0`；日志里
+`初始化 ChromaDB 失败：'RustBindingsAPI' object has no attribute 'bindings'`
+或 `unable to open database file` 交替出现。
+
+**原因**：`chromadb` 用的是**原生客户端**，而传进去的 embedding function 是
+**LangChain 的 `ZhipuAIEmbeddings`**。chromadb 1.5.x 要求该对象实现自己的接口
+（`name()` / `__call__` / `is_legacy` …），LangChain 那层只有
+`embed_query` / `embed_documents`，两者**并不兼容**。
+
+**修法**：不要在集合上挂 `embedding_function`，由**调用方自己算向量再显式传入**：
+
+```python
+collection.upsert(ids=..., documents=..., metadatas=...,
+                  embeddings=embedder.embed_documents(texts))
+collection.query(query_embeddings=[embedder.embed_query(question)], ...)
+```
+
+### 2. 服务整体无响应：连 `/docs`、登录都超时，但进程 CPU 极低
+
+**现象**：端口在监听、TCP 能连上，但**任何请求都不返回**（包括 FastAPI 自带的
+`/docs`、`/openapi.json`），连接堆积在 `CLOSE_WAIT`；进程 CPU 只有 1~2 秒。
+
+**原因**：`vectorstore` 的公开函数都是**同步阻塞**的（HTTP 调智谱 embedding +
+Chroma 读写），却在 `async` 函数里直接调用。文档处理 / 检索期间**事件循环被冻住**，
+整个服务（含其它路由）都无法响应。
+
+**修法**：所有同步阻塞调用统一丢线程池：
+
+```python
+stored = await asyncio.to_thread(vectorstore.add_chunks, owner_id=..., chunks=...)
+chunks = await asyncio.to_thread(vectorstore.search, db, question, owner_id=...)
+```
+
+涉及位置：`services/pipeline.py`、`api/documents.py`、`db/seed.py`、
+`rag/engine.py`、`api/knowledge_bases.py`、`api/health.py`。
+
+> **排查提示**：判断是「事件循环被阻塞」还是「进程真的死了」，
+> 可以另起一个最小 FastAPI 应用（不同端口）。若最小应用正常而业务应用不响应，
+> 基本就是事件循环被同步调用占住了。
+
+### 3. ChromaDB 需要可写的用户缓存目录
+
+ChromaDB 1.5.x 的 Rust 绑定会写 `C:\Users\<用户>\.cache\chroma`（Linux 为
+`~/.cache/chroma`）。该路径**不可写时初始化直接失败**，且报的是很误导人的
+`unable to open database file`。受限环境（沙箱、只读用户目录、CI）需注意。
+`CHROMA_CACHE_DIR` / `XDG_CACHE_HOME` **不被识别**，无法用环境变量改路径。
 
 ## 协作
 
