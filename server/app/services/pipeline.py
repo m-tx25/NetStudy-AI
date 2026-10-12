@@ -87,7 +87,11 @@ async def _process(document_id: str, reindex: bool) -> dict[str, Any]:
                     )
                 )
 
-            stored = vectorstore.add_chunks(
+            # 注意：add_chunks 内部是**同步阻塞**的（智谱 HTTP 请求 + ChromaDB 写入），
+            # 必须丢到线程池执行。否则会把事件循环冻住，导致整个服务（含登录接口）
+            # 在文档处理期间完全无响应。
+            stored = await asyncio.to_thread(
+                vectorstore.add_chunks,
                 owner_id=owner_id,
                 knowledge_base_id=base.id,
                 knowledge_base_name=knowledge_base_name,

@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -328,7 +329,11 @@ async def seed_demo_data() -> None:
                             int(page) if isinstance(page, (int, float)) and page else None,
                         )
                     )
-                stored = vectorstore.add_chunks(
+                # 同步阻塞（embedding + Chroma 写入）必须丢线程池：
+                # 启动阶段在事件循环里同步跑，会让服务在播种期间完全无响应
+                # （连登录接口都超时），看起来像"服务卡死"。
+                stored = await asyncio.to_thread(
+                    vectorstore.add_chunks,
                     owner_id=user.id,
                     knowledge_base_id=spec["kb"],
                     knowledge_base_name=kb_names[spec["kb"]],

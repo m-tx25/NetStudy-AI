@@ -74,16 +74,28 @@ def get_client():
 
 
 def get_collection():
-    """获取（必要时创建）集合。"""
+    """获取（必要时创建）集合。
+
+    注意：这里**不传 embedding_function**。
+    本模块用的是原生 `chromadb.PersistentClient`，而 chromadb 1.5.x 要求
+    embedding function 实现其自有接口（`name()` / `__call__` / `is_legacy` …）。
+    LangChain 的 `ZhipuAIEmbeddings` 只实现了 `embed_query` / `embed_documents`，
+    传进来会在集合创建时抛：
+
+        'ZhipuAIEmbeddings' object has no attribute 'name'
+
+    因此统一改为**调用方自己算向量再显式传入**（与 search() 的写法一致）：
+      - `upsert(..., embeddings=[...])`  ← 见 upsert_document
+      - `query(query_embeddings=[...])`  ← 见 search
+    需要 Chroma 默认嵌入（未配置智谱 Key 时）的场景，则传 `query_texts` / 不传
+    embeddings，让 Chroma 用内置 ONNX 模型自行处理。
+    """
     client = get_client()
     kwargs: dict[str, Any] = {
         "name": collection_name(),
         # 显式声明距离度量，便于日后换 cosine 时行为可预期
         "metadata": {"hnsw:space": "l2", "embedding": embeddings.current_mode()},
     }
-    embedding_function = embeddings.get_embeddings()
-    if embedding_function is not None:
-        kwargs["embedding_function"] = embedding_function
 
     try:
         return client.get_or_create_collection(**kwargs)
@@ -221,13 +233,21 @@ def add_chunks(
     # 分批写入，避免单次请求过大（智谱 embedding 单次最多 64 条）
     batch = 32
     written = 0
+    embedder = embeddings.get_embeddings()  # 智谱时为 LangChain Embeddings；未配置时为 None
+
     for start in range(0, len(ids), batch):
         end = start + batch
-        collection.upsert(
-            ids=ids[start:end],
-            documents=documents[start:end],
-            metadatas=metadatas[start:end],
-        )
+        payload: dict[str, Any] = {
+            "ids": ids[start:end],
+            "documents": documents[start:end],
+            "metadatas": metadatas[start:end],
+        }
+        # 智谱模式：自己算向量后显式传入（不依赖集合上的 embedding_function，
+        # 原生 chromadb 与 LangChain 的 Embeddings 接口并不兼容，见 get_collection 注释）
+        if embedder is not None:
+            payload["embeddings"] = embedder.embed_documents(documents[start:end])
+        # 未配置智谱 Key 时不传 embeddings，交给 Chroma 内置 ONNX 模型
+        collection.upsert(**payload)
         written += len(ids[start:end])
 
     return written
