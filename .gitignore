@@ -57,6 +57,10 @@ rag/.pylibs/
 # 向量库（本地生成，体积大，可用 build_db.py 重建；不入库）
 chroma_db/
 rag/chroma_db/
+# ChromaDB 的临时/探测目录（排查时会在当前目录生成）
+# 注意：不写尾斜杠，否则对「尚不存在的路径」不生效
+chroma_probe_*
+chroma_*
 
 # 原始语料（体积大，不入库）
 rag/*.pdf
