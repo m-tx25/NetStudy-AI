@@ -151,6 +151,7 @@ class RetrievedChunk:
         "page",
         "score",
         "ordinal",
+        "lexical",
     )
 
     def __init__(
@@ -165,6 +166,7 @@ class RetrievedChunk:
         page: int | None,
         score: float,
         ordinal: int,
+        lexical: int = 0,
     ) -> None:
         self.chunk_id = chunk_id
         self.document_id = document_id
@@ -175,10 +177,26 @@ class RetrievedChunk:
         self.page = page
         self.score = score
         self.ordinal = ordinal
+        # 词面命中得分（问题词在片段中出现的加权次数）
+        self.lexical = lexical
 
     def snippet(self, limit: int = 160) -> str:
         text = " ".join(self.content.split())
         return text if len(text) <= limit else f"{text[:limit]}…"
+
+    def is_evidence(self, min_lexical: int, min_score: float) -> bool:
+        """该片段是否构成「知识库依据」。
+
+        为什么不能只看向量分：实测弱向量模型（Chroma 默认 ONNX）下，
+        无关问题（"量子纠缠"）也能拿到 0.83，而有关问题（"RAG 流程"）只有 0.67 ——
+        **两个区间完全重叠，向量分无法区分**。
+        词面命中则是干净信号：有关问题 ≥9，无关问题 ≤2。
+
+        判据：词面命中达阈值，或向量分非常高（强向量模型下的纯语义命中）。
+        """
+        if self.lexical >= min_lexical:
+            return True
+        return self.score >= min_score
 
 
 # --------------------------------------------------------------------------
@@ -382,7 +400,6 @@ def search(
     allowed = set(knowledge_base_ids) if knowledge_base_ids else None
 
     candidates: list[RetrievedChunk] = []
-    lexical_scores: list[int] = []
     for index, content in enumerate(documents):
         metadata = (metadatas[index] if index < len(metadatas) else {}) or {}
         if allowed is not None and metadata.get("knowledge_base_id") not in allowed:
@@ -401,20 +418,25 @@ def search(
                 page=int(page) if isinstance(page, int) and page > 0 else None,
                 score=_distance_to_similarity(distance),
                 ordinal=int(metadata.get("ordinal") or 0),
+                lexical=lexical_score(query_text, content or ""),
             )
         )
-        lexical_scores.append(lexical_score(query_text, content or ""))
 
     if not candidates:
         return []
 
-    if use_hybrid and any(lexical_scores):
-        max_lexical = max(lexical_scores) or 1
-        for position, candidate in enumerate(candidates):
-            lexical = lexical_scores[position] / max_lexical
-            candidate.score = round(
-                VECTOR_WEIGHT * candidate.score + LEXICAL_WEIGHT * lexical, 4
-            )
+    # 混合重排：向量分与归一化词面分线性组合。
+    # 注意 lexical 字段始终保留**原始值**，因为证据门槛用的是原始命中次数，
+    # 而不是归一化后的相对值（相对值在「全都无关」时也总有一个是 1.0）。
+    if use_hybrid:
+        max_lexical = max((item.lexical for item in candidates), default=0)
+        if max_lexical > 0:
+            for candidate in candidates:
+                candidate.score = round(
+                    VECTOR_WEIGHT * candidate.score
+                    + LEXICAL_WEIGHT * (candidate.lexical / max_lexical),
+                    4,
+                )
 
     candidates.sort(key=lambda item: item.score, reverse=True)
 

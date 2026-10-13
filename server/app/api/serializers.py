@@ -71,6 +71,8 @@ def message_out(message: Message) -> dict:
         "sources": [source_out(item) for item in sorted(message.sources, key=lambda s: s.ordinal)],
         "createdAt": iso(message.created_at),
         "status": message.status,
+        # knowledge_base / model / none —— 前端据此标注「非知识库依据」
+        "source": getattr(message, "source", "knowledge_base") or "knowledge_base",
     }
 
 
