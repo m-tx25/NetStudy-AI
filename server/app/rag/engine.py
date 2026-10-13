@@ -68,6 +68,21 @@ async def _conversation_kb_ids(db: AsyncSession, conversation_id: str) -> list[s
     return list(rows)
 
 
+def _pick_evidence(chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
+    """从检索结果中挑出真正算「知识库依据」的片段。
+
+    判据见 RetrievedChunk.is_evidence：词面命中达阈值，或向量分很高。
+    返回空列表表示「知识库里确实没有这个问题的依据」，此时应切换到模型自身知识作答。
+    """
+    if not chunks:
+        return []
+    return [
+        chunk
+        for chunk in chunks
+        if chunk.is_evidence(settings.RAG_MIN_LEXICAL_SCORE, settings.RAG_STRONG_SCORE)
+    ]
+
+
 async def stream_answer(
     db: AsyncSession,
     *,
@@ -77,8 +92,19 @@ async def stream_answer(
     knowledge_base_ids: list[str] | None = None,
     top_k: int | None = None,
     score_threshold: float | None = None,
+    model_id: str | None = None,
 ) -> AsyncGenerator[dict[str, Any], None]:
-    """执行一次完整问答，边生成边产出事件。"""
+    """执行一次完整问答，边生成边产出事件。
+
+    作答模式由检索结果决定：
+      - 命中资料         → 「知识库依据」模式：强约束只依据资料回答并标注引用；
+      - 未命中且允许回退  → 「模型自身知识」模式：服务端先下发醒目标注（说明非文档依据、
+                            引导上传文档），再让模型正常作答；
+      - 未命中且禁止回退  → 只返回可操作提示，不调用模型。
+
+    model_id 用于选择生成模型（见 settings.available_models()）；
+    向量化模型与此无关，始终由 ZHIPUAI_* 配置决定。
+    """
     kb_ids = list(knowledge_base_ids or [])
 
     # ---------- 1. 会话：能复用则复用，否则新建 ----------
@@ -143,6 +169,23 @@ async def stream_answer(
         ),
     )
 
+    # ---------- 5. 选择生成模型与作答模式 ----------
+    selected_model = llm.resolve_model(model_id)
+
+    # 检索到了片段 ≠ 有依据。弱向量模型下无关问题也会返回高分片段
+    # （实测"量子纠缠"拿到 0.83），若只看 chunks 是否为空，回退将永远不触发。
+    # 因此这里用证据门槛判断：词面命中达阈值，或向量分很高。
+    evidence = _pick_evidence(chunks)
+    grounded = bool(evidence)
+    # 无依据且允许回退 → 改用模型自身知识作答；否则维持严格 RAG
+    use_fallback = (not grounded) and settings.RAG_FALLBACK_TO_MODEL
+    answer_source = "knowledge_base" if grounded else ("model" if use_fallback else "none")
+
+    # 没有依据时，不把弱相关片段当"参考资料"塞给模型 —— 否则它会照着无关内容硬答
+    context_chunks = evidence if grounded else []
+
+    # 引用来源只展示**构成依据**的片段；没有依据时不展示弱相关片段，
+    # 否则前端会显示"引用了 X 文档"却给出模型自行生成的回答，自相矛盾。
     sources = [
         {
             "id": chunk.chunk_id,
@@ -154,27 +197,35 @@ async def stream_answer(
             "page": chunk.page,
             "snippet": chunk.snippet(),
         }
-        for chunk in chunks
+        for chunk in context_chunks
     ]
 
     yield {
         "type": "meta",
         "conversationId": conversation.id,
-        "model": settings.LLM_MODEL if llm.is_configured() else "no-llm",
+        "model": selected_model.model if selected_model.is_configured else "no-llm",
+        "modelLabel": selected_model.label,
+        # 前端据此即时显示「本次回答没有知识库依据」
+        "grounded": grounded,
+        "answerSource": answer_source,
+        "fallback": use_fallback,
         "retrieved": len(chunks),
+        # 构成依据的片段数；为 0 才是真正的「知识库里没有」
+        "evidence": len(evidence),
     }
 
     # 先推引用来源，再推正文 —— 与前端 mock 的顺序一致，
     # 这样用户能在答案生成前就看到「依据了哪些文档」。
     yield {"type": "sources", "sources": sources}
 
-    # ---------- 5. 生成 ----------
+    # ---------- 6. 生成 ----------
     assistant_message = Message(
         id=new_id("msg"),
         conversation_id=conversation.id,
         role="assistant",
         content="",
         status="streaming",
+        source=answer_source,
     )
     db.add(assistant_message)
     await db.flush()
@@ -183,15 +234,24 @@ async def stream_answer(
     usage: dict[str, int] = {}
     failed = False
 
-    if not chunks:
-        # 没有检索到依据时不调用大模型，直接给出可操作的提示，避免编造
-        text = prompts.NO_CONTEXT_ANSWER
-        collected.append(text)
-        yield {"type": "delta", "content": text}
-    else:
-        messages = prompts.build_messages(question, chunks, history)
+    if grounded or use_fallback:
+        # 有依据 → 严格 RAG（只喂构成依据的片段）；无依据但允许回退 → 用模型自身知识
+        messages = prompts.build_messages(
+            question, context_chunks, history, grounded=grounded
+        )
+        if not grounded:
+            # 标注由服务端直接下发，不依赖模型自觉 —— 保证用户一定看得到
+            collected.append(prompts.FALLBACK_BANNER)
+            yield {"type": "delta", "content": prompts.FALLBACK_BANNER}
+
         try:
-            async for piece in llm.stream_chat(messages):
+            async for piece in llm.stream_chat(
+                messages,
+                model=selected_model,
+                temperature=(
+                    None if grounded else settings.RAG_FALLBACK_TEMPERATURE
+                ),
+            ):
                 collected.append(piece)
                 yield {"type": "delta", "content": piece}
         except llm.LLMNotConfigured as exc:
@@ -203,12 +263,17 @@ async def stream_answer(
         except Exception as exc:  # 兜底，避免流中断后连接悬挂
             failed = True
             yield {"type": "error", "message": f"生成回答时出错：{exc}"}
+    else:
+        # 关闭回退时的严格模式：不调用大模型，只给出可操作的提示
+        collected.append(prompts.NO_CONTEXT_ANSWER)
+        yield {"type": "delta", "content": prompts.NO_CONTEXT_ANSWER}
 
     answer = "".join(collected)
 
-    # ---------- 6. 持久化回答与引用 ----------
+    # ---------- 7. 持久化回答与引用 ----------
     assistant_message.content = answer
     assistant_message.status = "error" if failed else "done"
+    assistant_message.source = answer_source
     assistant_message.prompt_tokens = usage.get("promptTokens", 0)
     assistant_message.completion_tokens = usage.get("completionTokens", 0)
 
@@ -242,6 +307,11 @@ async def stream_answer(
         "conversationId": conversation.id,
         "usage": usage,
         "status": assistant_message.status,
+        # 回传来源，便于前端在气泡上保留「非知识库依据」标注
+        "source": answer_source,
+        "grounded": grounded,
+        "model": selected_model.model,
+        "modelLabel": selected_model.label,
     }
 
 

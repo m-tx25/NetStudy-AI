@@ -157,6 +157,9 @@ class Message(Base):
     prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
     completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
+    # 答案来源：knowledge_base（有检索依据）/ model（模型自身知识）/ none（未生成）
+    # 前端据此在气泡上标注「非知识库依据」，与 rag/prompts.py 的 FALLBACK_BANNER 对应
+    source: Mapped[str] = mapped_column(String(32), default="knowledge_base", index=True)
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
     sources: Mapped[list["MessageSource"]] = relationship(

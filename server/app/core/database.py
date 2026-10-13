@@ -122,8 +122,50 @@ async def _ensure_database_exists() -> None:
         connection.close()
 
 
+async def _ensure_columns() -> None:
+    """给已存在的表补上缺失的列（轻量迁移）。
+
+    背景：`Base.metadata.create_all` 只创建**缺失的表**，不会给已有表新增列。
+    因此给模型加字段后，老数据库会报 `no such column`，必须删库才能恢复 —— 这不可接受。
+    这里在启动时对比模型定义与库中实际结构，自动补列，对 SQLite 与 MySQL 都适用。
+
+    局限：只能补列，不能改类型 / 删列 / 加约束。生产环境仍建议使用 Alembic。
+    """
+    from sqlalchemy import inspect, text
+
+    from app import models  # noqa: F401  确保元数据已加载
+
+    metadata = Base.metadata
+
+    def _existing(sync_conn) -> dict[str, set[str]]:
+        inspector = inspect(sync_conn)
+        return {
+            name: {column["name"] for column in inspector.get_columns(name)}
+            for name in inspector.get_table_names()
+        }
+
+    async with engine.begin() as conn:
+        existing = await conn.run_sync(_existing)
+
+        for table in metadata.sorted_tables:
+            if table.name not in existing:
+                continue  # 新表交给 create_all
+            present = existing[table.name]
+            for column in table.columns:
+                if column.name in present:
+                    continue
+                ddl_type = column.type.compile(dialect=engine.dialect)
+                clause = f'ALTER TABLE "{table.name}" ADD COLUMN "{column.name}" {ddl_type}'
+                try:
+                    await conn.execute(text(clause))
+                    logger.info("迁移：为表 %s 补列 %s", table.name, column.name)
+                except Exception as exc:
+                    # 多进程同时启动时可能撞车，记录即可
+                    logger.warning("补列失败：%s -> %s", clause, exc)
+
+
 async def init_db() -> None:
-    """建库建表（开发期用；生产建议改用 Alembic 迁移）。"""
+    """建库建表 + 补齐缺失列（开发期用；生产建议改用 Alembic 迁移）。"""
     # 必须先导入模型，元数据里才会有表定义
     from app import models  # noqa: F401
 
@@ -133,6 +175,8 @@ async def init_db() -> None:
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+        # create_all 不会给已有表加列，这里补上
+        await _ensure_columns()
     except Exception as exc:
         if settings.ALLOW_SQLITE_FALLBACK:
             logger.warning("MySQL 初始化失败（%s），回退到 SQLite", exc)

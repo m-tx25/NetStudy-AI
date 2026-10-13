@@ -174,6 +174,8 @@ class MessageOut(CamelModel):
     sources: list[SourceOut] = Field(default_factory=list)
     created_at: str | None = None
     status: str = "done"
+    # knowledge_base / model / none —— 前端据此标注「非知识库依据」
+    source: str = "knowledge_base"
 
 
 class StreamChatIn(CamelModel):
@@ -182,6 +184,9 @@ class StreamChatIn(CamelModel):
     knowledge_base_ids: list[str] = Field(default_factory=list)
     top_k: int | None = None
     score_threshold: float | None = None
+    # 生成模型 id（见 GET /api/chat/models）；留空则用服务端默认模型。
+    # 与向量化模型无关 —— 检索始终用 ZHIPUAI_* 配置的 embedding 模型。
+    model_id: str | None = None
 
     @field_validator("content")
     @classmethod

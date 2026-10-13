@@ -3,9 +3,13 @@
 约定：业务代码一律 `from app.core.config import settings`，不要散落 os.environ。
 """
 
+from dataclasses import dataclass
 from functools import lru_cache
+import logging
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -85,6 +89,31 @@ class Settings(BaseSettings):
     LLM_TIMEOUT: int = 120
     LLM_TEMPERATURE: float = 0.3
 
+    # 可选模型列表（JSON 数组），供前端「模型选择」使用。
+    # 每项：{"id","label","baseUrl","apiKey","model","temperature"?,"kind"?:"api"|"local"}
+    # 留空则只提供上面的默认模型。apiKey 不会下发给前端，只告知该模型是否可用。
+    # 任何 OpenAI 兼容服务都可（DeepSeek / 通义 / 智谱 / Moonshot / vLLM / Ollama / One-API）。
+    LLM_MODELS: str = ""
+    # 默认选中的模型 id（留空则用默认模型）
+    LLM_DEFAULT_MODEL_ID: str = ""
+
+    # 检索无依据时是否允许模型用自身知识回答：
+    #   true（默认）—— 回退为通用回答，并在正文前明确标注「非知识库依据」+ 引导补充文档，
+    #                  避免用户误以为答案出自文档。
+    #   false       —— 维持严格 RAG：无依据只提示未检索到，不生成。
+    RAG_FALLBACK_TO_MODEL: bool = True
+    # 无依据回退时的温度。**留空（None）表示沿用所选模型自己的温度** ——
+    # 因为「所选模型的配置应生效」是用户的明确预期，不应被回退逻辑悄悄覆盖。
+    # 需要让回退回答更活泼时，再显式设成 0.6 之类的值。
+    RAG_FALLBACK_TEMPERATURE: float | None = None
+    # 「检索结果算不算知识库依据」的门槛。
+    # 为什么需要它：弱向量模型下向量分无法区分有关/无关（实测无关问题 0.83、
+    # 有关问题 0.67，区间完全重叠），而词面命中是干净信号（有关 ≥9、无关 ≤2）。
+    # 因此以词面命中为主判据，向量分只作为强模型下的补充。
+    RAG_MIN_LEXICAL_SCORE: int = 3
+    # 向量分达到该值也视为命中（强向量模型下的纯语义命中场景）
+    RAG_STRONG_SCORE: float = 0.85
+
     # ---------------- RAG 参数 ----------------
     # 与 rag/build_db.py 的 500/50 对齐
     CHUNK_SIZE: int = 500
@@ -143,6 +172,120 @@ class Settings(BaseSettings):
     @property
     def is_mysql(self) -> bool:
         return self.mysql_dsn.startswith("mysql")
+
+    # ------------------------------------------------------------------
+    # 可选模型（供前端「模型选择」使用）
+    # ------------------------------------------------------------------
+    def available_models(self) -> list["ModelConfig"]:
+        """解析 LLM_MODELS 配置。
+
+        JSON 非法时**不抛异常**（否则整个服务起不来），而是退化为「只有默认模型」
+        并记录告警 —— 配置写错不应导致服务不可用。
+        """
+        import json
+
+        raw = (self.LLM_MODELS or "").strip()
+        items: list[dict] = []
+
+        if raw:
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, list):
+                    items = [item for item in parsed if isinstance(item, dict)]
+                else:
+                    logger.warning("LLM_MODELS 不是 JSON 数组，已忽略")
+            except json.JSONDecodeError as exc:
+                logger.warning("LLM_MODELS 解析失败（%s），退化为仅默认模型", exc)
+
+        models: list[ModelConfig] = []
+        for index, item in enumerate(items):
+            model_name = str(item.get("model") or "").strip()
+            if not model_name:
+                logger.warning("LLM_MODELS[%s] 缺少 model 字段，已忽略", index)
+                continue
+            base_url = str(item.get("baseUrl") or item.get("base_url") or "").strip()
+            is_local = bool(base_url) and any(
+                host in base_url for host in ("127.0.0.1", "localhost", "0.0.0.0")
+            )
+            temperature = item.get("temperature")
+            models.append(
+                ModelConfig(
+                    id=str(item.get("id") or model_name).strip(),
+                    label=str(item.get("label") or model_name).strip(),
+                    base_url=base_url,
+                    api_key=str(item.get("apiKey") or item.get("api_key") or "").strip(),
+                    model=model_name,
+                    temperature=float(temperature) if temperature is not None else self.LLM_TEMPERATURE,
+                    kind=str(item.get("kind") or ("local" if is_local else "api")),
+                )
+            )
+
+        # 默认模型始终可选（id 固定为 "default"），保证前端至少有一个选项
+        models.insert(
+            0,
+            ModelConfig(
+                id="default",
+                label=f"{self.LLM_MODEL}（默认）",
+                base_url=self.LLM_BASE_URL,
+                api_key=self.LLM_API_KEY,
+                model=self.LLM_MODEL,
+                temperature=self.LLM_TEMPERATURE,
+                kind="local"
+                if any(host in self.LLM_BASE_URL for host in ("127.0.0.1", "localhost"))
+                else "api",
+            ),
+        )
+        return models
+
+    def resolve_model(self, model_id: str | None = None) -> "ModelConfig":
+        """按 id 取模型；找不到时回退到默认模型（不抛错，保证问答始终可用）。"""
+        models = self.available_models()
+        wanted = (model_id or self.LLM_DEFAULT_MODEL_ID or "").strip()
+        if wanted:
+            for item in models:
+                if item.id == wanted:
+                    return item
+        return models[0]
+
+    def public_models(self) -> list[dict]:
+        """下发给前端的模型清单 —— **绝不包含 apiKey**，只告知是否可用。"""
+        return [
+            {
+                "id": item.id,
+                "label": item.label,
+                "model": item.model,
+                "kind": item.kind,
+                "configured": item.is_configured,
+                "isDefault": item.id == "default",
+            }
+            for item in self.available_models()
+        ]
+
+
+@dataclass(frozen=True)
+class ModelConfig:
+    """一个可用于生成的模型。
+
+    Embedding 与 LLM 是两件事：这里只描述「生成」用的模型。
+    向量化模型见 ZHIPUAI_* 配置，二者互不影响。
+    """
+
+    id: str
+    label: str
+    base_url: str
+    api_key: str
+    model: str
+    temperature: float = 0.3
+    kind: str = "api"  # api | local
+
+    @property
+    def is_configured(self) -> bool:
+        """本地部署通常不需要真实 key（Ollama 填任意非空值即可）。"""
+        return bool(self.base_url and self.model and self.api_key)
+
+    @property
+    def is_local(self) -> bool:
+        return self.kind == "local"
 
 
 @lru_cache

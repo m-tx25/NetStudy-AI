@@ -46,6 +46,7 @@ async def chat_stream(
                 knowledge_base_ids=payload.knowledge_base_ids,
                 top_k=payload.top_k,
                 score_threshold=payload.score_threshold,
+                model_id=payload.model_id,
             ):
                 # 客户端中断（用户点「停止生成」）时停止推流，
                 # 已生成的内容已在 engine 内落库
@@ -64,6 +65,21 @@ async def chat_stream(
     )
 
 
+@router.get("/models")
+async def chat_models(user: CurrentUser) -> dict:
+    """可选生成模型清单（不含密钥），供前端「模型选择」下拉使用。
+
+    生成模型与向量化模型相互独立：这里返回的只影响回答由谁生成，
+    检索仍统一使用 ZHIPUAI_* 配置的向量化模型。
+    """
+    models = settings.public_models()
+    return {
+        "models": models,
+        "defaultId": settings.resolve_model(None).id,
+        "fallbackToModel": settings.RAG_FALLBACK_TO_MODEL,
+    }
+
+
 @router.get("/config")
 async def chat_config(user: CurrentUser) -> dict:
     """把服务端的检索默认值告诉前端，避免两端参数各写一份。"""
@@ -74,4 +90,5 @@ async def chat_config(user: CurrentUser) -> dict:
         "chunkOverlap": settings.CHUNK_OVERLAP,
         "memoryTurns": settings.MEMORY_TURNS,
         "maxUploadSizeMB": settings.MAX_UPLOAD_SIZE_MB,
+        "fallbackToModel": settings.RAG_FALLBACK_TO_MODEL,
     }
