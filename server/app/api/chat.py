@@ -9,14 +9,14 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import CurrentUser, DbSession
 from app.core.config import settings
 from app.rag.engine import sse, stream_answer
-from app.schemas import StreamChatIn, UserModelIn, UserModelUpdateIn
-from app.services import model_config
+from app.schemas import StreamChatIn
+from app.services import keyring
 
 logger = logging.getLogger(__name__)
 
@@ -68,90 +68,23 @@ async def chat_stream(
 
 @router.get("/models")
 async def chat_models(user: CurrentUser, db: DbSession) -> dict:
-    """可选生成模型清单（内置 + 用户自带）。
+    """可选生成模型清单，供前端「模型选择」使用。
 
-    **不含任何密钥**：只返回 configured / hasApiKey 供界面提示。
-    生成模型与向量化模型相互独立：这里只影响回答由谁生成，
-    检索仍统一使用 ZHIPUAI_* 配置的向量化模型。
+    数据来自 keyring：服务端 .env 配置的模型 + 该用户/其团队自配的生成类密钥。
+    **不含任何密钥**，只返回 configured 供界面提示。
+
+    说明：密钥与模型的管理接口在 /api/keys（个人）与 /api/teams/{id}/keys（团队），
+    这里只做「可选项清单」，避免前端为了渲染一个下拉去拼两处数据。
     """
-    models = await model_config.public_list(db, user.id)
+    models = await keyring.list_available_models(db, user_id=user.id)
     return {
         "models": models,
-        "defaultId": settings.resolve_model(settings.LLM_DEFAULT_MODEL_ID or None).id,
+        "defaultId": f"server:{settings.resolve_model(settings.LLM_DEFAULT_MODEL_ID or None).id}",
         "fallbackToModel": settings.RAG_FALLBACK_TO_MODEL,
-        # 本地模型的常见预填值，前端可做「一键填入」
-        "presets": model_config.LOCAL_PRESETS,
+        # 用户自配密钥后，后端会按知识库归属自动选用对应模型，
+        # 因此前端不必强制选择（见 rag/engine.py 的 resolve_chat_key 分支）。
+        "autoByKey": True,
     }
-
-
-@router.post("/models", status_code=201)
-async def create_user_model(payload: UserModelIn, user: CurrentUser, db: DbSession) -> dict:
-    """新增一个用户自带的模型（本地部署或云端 API）。"""
-    row = await model_config.create(
-        db,
-        user.id,
-        label=payload.label,
-        base_url=payload.base_url,
-        api_key=payload.api_key,
-        model_name=payload.model,
-        is_local=payload.is_local,
-        temperature=payload.temperature,
-    )
-    return {
-        "id": row.id,
-        "label": row.label,
-        "model": row.model_name,
-        "kind": "local" if row.is_local else "api",
-        "configured": True,
-    }
-
-
-@router.patch("/models/{model_id}")
-async def update_user_model(
-    model_id: str, payload: UserModelUpdateIn, user: CurrentUser, db: DbSession
-) -> dict:
-    """更新用户模型。apiKey 留空表示不修改（界面不回显密钥）。"""
-    row = await model_config.update(
-        db,
-        user.id,
-        model_id,
-        label=payload.label,
-        base_url=payload.base_url,
-        api_key=payload.api_key,
-        model_name=payload.model,
-        is_local=payload.is_local,
-        temperature=payload.temperature,
-    )
-    if row is None:
-        raise HTTPException(status_code=404, detail="模型不存在或不属于当前用户")
-    return {
-        "id": row.id,
-        "label": row.label,
-        "model": row.model_name,
-        "kind": "local" if row.is_local else "api",
-        "configured": True,
-    }
-
-
-@router.delete("/models/{model_id}")
-async def delete_user_model(model_id: str, user: CurrentUser, db: DbSession) -> dict:
-    """删除用户自带模型（内置模型会被拒绝）。"""
-    if not model_config.is_user_model(model_id):
-        raise HTTPException(status_code=400, detail="内置模型不可删除")
-    ok = await model_config.remove(db, user.id, model_id)
-    if not ok:
-        raise HTTPException(status_code=404, detail="模型不存在或不属于当前用户")
-    return {"ok": True}
-
-
-@router.post("/models/{model_id}/probe")
-async def probe_user_model(model_id: str, user: CurrentUser, db: DbSession) -> dict:
-    """连通性自检：发一次极小请求，立刻告诉用户该模型能否使用。
-
-    本地模型最常见的失败原因是「服务没启动」或「模型名写错」，
-    保存后立即探测比等到提问时才报错友好得多。
-    """
-    return await model_config.probe(db, user.id, model_id)
 
 
 @router.get("/config")
