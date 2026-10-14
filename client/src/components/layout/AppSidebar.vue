@@ -17,6 +17,7 @@ import {
   Sunny,
   SwitchButton,
   UserFilled,
+  User,
 } from '@element-plus/icons-vue'
 
 import { useChatStore } from '@/stores/chat'
@@ -268,6 +269,15 @@ async function handleCommand(command) {
         <el-icon class="text-base"><Setting /></el-icon>
         <span class="flex-1 text-left">知识库管理</span>
         <span v-if="knowledgeCount" class="text-xs app-muted">{{ knowledgeCount }}</span>
+      </button>
+
+      <button
+        class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm app-text transition app-hover"
+        :class="{ 'app-active': route.path.startsWith('/app/teams') }"
+        @click="go('/app/teams')"
+      >
+        <el-icon class="text-base"><User /></el-icon>
+        <span class="flex-1 text-left">团队</span>
       </button>
 
       <el-dropdown trigger="click" placement="top-start" class="mt-1 w-full" @command="handleCommand">

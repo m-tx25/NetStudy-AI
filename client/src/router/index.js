@@ -52,6 +52,12 @@ const routes = [
         meta: { title: '知识库管理' },
       },
       {
+        path: 'teams',
+        name: 'teams',
+        component: () => import('@/views/TeamsView.vue'),
+        meta: { title: '团队' },
+      },
+      {
         path: 'settings',
         name: 'settings',
         component: () => import('@/views/SettingsView.vue'),
@@ -63,6 +69,7 @@ const routes = [
   { path: '/chat', redirect: '/app/chat' },
   { path: '/chat/:id', redirect: (to) => `/app/chat/${to.params.id}` },
   { path: '/knowledge', redirect: '/app/knowledge' },
+  { path: '/teams', redirect: '/app/teams' },
   { path: '/settings', redirect: '/app/settings' },
   {
     path: '/:pathMatch(.*)*',

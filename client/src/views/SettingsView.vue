@@ -5,6 +5,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Expand, Key, Lock, Message, User, UserFilled } from '@element-plus/icons-vue'
 
 import PasswordStrength from '@/components/auth/PasswordStrength.vue'
+import ApiKeyManager from '@/components/keys/ApiKeyManager.vue'
 import { useUserStore } from '@/stores/user'
 import { useChatStore } from '@/stores/chat'
 import { useSidebar } from '@/composables/useSidebar'
@@ -328,6 +329,20 @@ async function savePassword() {
               <span class="truncate text-xs app-text-secondary">{{ item.value }}</span>
             </div>
           </div>
+        </section>
+
+        <!-- API 密钥（个人级） -->
+        <section class="mt-6 rounded-2xl border app-border p-5 md:p-6">
+          <div class="flex items-center gap-2">
+            <el-icon class="text-base app-accent"><Key /></el-icon>
+            <h2 class="text-[15px] font-semibold app-text">API 密钥</h2>
+          </div>
+          <p class="mt-1 mb-4 text-xs leading-5 app-muted">
+            配置你自己的大模型 / 向量化密钥，作用于<strong>个人知识库</strong>。
+            团队知识库请在「团队 → 团队设置」里配置团队密钥（费用归团队）。
+            密钥加密存储，保存后无法查看明文。
+          </p>
+          <ApiKeyManager scope="user" />
         </section>
 
         <!-- 修改密码 -->
