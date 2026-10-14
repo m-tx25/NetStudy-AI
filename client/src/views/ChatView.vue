@@ -14,6 +14,9 @@ const knowledgeStore = useKnowledgeStore()
 
 onMounted(() => {
   knowledgeStore.loadBases()
+  // 可选生成模型（决定由谁生成回答）与 RAG 参数（含无依据是否回退到模型）
+  chatStore.loadModels()
+  chatStore.loadChatConfig()
   chatStore.openConversation(route.params.id || null)
 })
 

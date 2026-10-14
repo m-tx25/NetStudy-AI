@@ -1,11 +1,14 @@
 <script setup>
 import { computed, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { CopyDocument, Files, Refresh, WarningFilled } from '@element-plus/icons-vue'
 
 import { renderMarkdown } from '@/utils/markdown'
 import { copyText } from '@/utils/clipboard'
 import { formatScore } from '@/utils/format'
+
+const router = useRouter()
 
 const props = defineProps({
   message: { type: Object, required: true },
@@ -20,6 +23,22 @@ const expandedSourceId = ref('')
 const isUser = computed(() => props.message.role === 'user')
 
 const isStreamingThis = computed(() => props.streaming && props.message.status === 'streaming')
+
+/**
+ * 该回答是否来自模型自身知识（而非上传的文档）。
+ *
+ * 后端在 SSE 的 meta/done 事件里给出 source 与 grounded；
+ * 历史消息（从 /conversations/{id}/messages 加载）同样带 source 字段。
+ * 这里再做一次兜底：若是助手回答、且没有任何引用来源，也按「非知识库依据」提示。
+ */
+const fromModelKnowledge = computed(() => {
+  if (isUser.value) return false
+  if (props.message.source === 'model') return true
+  if (props.message.source === 'knowledge_base') return false
+  // 兼容旧数据：没有 source 字段时，以「有无引用来源」推断
+  const hasSources = Array.isArray(props.message.sources) && props.message.sources.length > 0
+  return props.message.status === 'done' && !hasSources && Boolean(props.message.content)
+})
 
 const html = computed(() => renderMarkdown(props.message.content || ''))
 
@@ -108,6 +127,34 @@ async function handleContentClick(event) {
         </template>
 
         <template v-else>
+          <!-- 非知识库依据：明确告知，避免用户误以为答案出自上传的文档 -->
+          <div
+            v-if="fromModelKnowledge"
+            class="mb-3 flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+          >
+            <el-icon class="mt-0.5 shrink-0"><WarningFilled /></el-icon>
+            <div class="flex-1">
+              <p class="font-medium">知识库中未检索到相关依据</p>
+              <p class="mt-0.5">
+                以下回答由
+                <template v-if="message.modelLabel">「{{ message.modelLabel }}」</template>
+                <template v-else>模型</template>
+                基于通用知识生成，<strong>并非来自你上传的文档</strong>，请自行核实准确性。
+              </p>
+              <p class="mt-1">
+                如需基于内部资料的准确回答，请到
+                <button
+                  type="button"
+                  class="font-medium underline underline-offset-2"
+                  @click="router.push('/knowledge')"
+                >
+                  知识库管理
+                </button>
+                上传相关文档后重新提问。
+              </p>
+            </div>
+          </div>
+
           <!-- 等待首字：三个跳动圆点 -->
           <div v-if="isStreamingThis && !message.content" class="flex items-center gap-1 py-2">
             <span

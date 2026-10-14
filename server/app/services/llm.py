@@ -12,6 +12,7 @@ One-API 等。本地部署只需把 base_url 指向本机端口（如 http://127
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -42,12 +43,55 @@ def is_configured(model: ModelConfig | None = None) -> bool:
     return target.is_configured
 
 
-def _endpoint(model: ModelConfig) -> str:
-    base = model.base_url.rstrip("/")
-    # 兼容两种写法：给了 .../v1 或只给域名
-    if not base.endswith("/v1") and "/v1" not in base:
+# 用户可能把「完整端点」当成 baseUrl 填进来，例如：
+#   https://api.deepseek.com/v1/chat/completions
+#   https://api.deepseek.com/chat/completions
+# 这些后缀必须剥掉，否则会拼成 .../chat/completions/chat/completions，
+# 请求落到不存在的路径上，服务端通常返回 401/404 —— 表现为「密钥无效」，但其实是路径错了。
+_ENDPOINT_SUFFIXES = (
+    "/chat/completions",
+    "/completions",
+    "/embeddings",
+    "/responses",
+)
+
+
+def normalize_base_url(raw: str) -> str:
+    """把用户填写的地址规范成可直接拼接端点的 base。
+
+    处理三类常见写法：
+      1. https://api.deepseek.com                  → 补 /v1
+      2. https://api.deepseek.com/v1               → 原样
+      3. https://api.deepseek.com/v1/chat/completions → 剥掉端点后缀，保留 /v1
+    """
+    base = (raw or "").strip().rstrip("/")
+    if not base:
+        return ""
+
+    # 1) 先剥掉误填的端点后缀（可重复，容忍 .../v1/chat/completions/ 这类）
+    lowered = base.lower()
+    changed = True
+    while changed:
+        changed = False
+        for suffix in _ENDPOINT_SUFFIXES:
+            if lowered.endswith(suffix):
+                base = base[: -len(suffix)].rstrip("/")
+                lowered = base.lower()
+                changed = True
+                break
+
+    # 2) 再补 /v1。只在「路径为空」或「末段不是 vX 形式的版本号」时补，
+    #    以免把 https://host/v1beta 这类地址误改成 /v1beta/v1。
+    if base and not re.search(r"/v\d+[a-z0-9.-]*$", base, flags=re.IGNORECASE):
         base = f"{base}/v1"
-    return f"{base}/chat/completions"
+    elif not base:
+        return ""
+
+    return base
+
+
+def _endpoint(model: ModelConfig) -> str:
+    return f"{normalize_base_url(model.base_url)}/chat/completions"
 
 
 def _headers(model: ModelConfig) -> dict[str, str]:
