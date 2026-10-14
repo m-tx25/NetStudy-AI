@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncGenerator
+from dataclasses import replace
 from typing import Any
 
 from sqlalchemy import func, select
@@ -27,13 +28,14 @@ from app.core.config import settings
 from app.models import (
     Conversation,
     ConversationKnowledgeBase,
+    KnowledgeBase,
     Message,
     MessageSource,
     User,
     now_utc,
 )
 from app.rag import prompts
-from app.services import access, llm, vectorstore
+from app.services import access, keyring, llm, vectorstore
 from app.utils.ids import new_id
 
 
@@ -158,6 +160,25 @@ async def stream_answer(
     # 团队知识库的切片带 team_id，提问者是团队成员就要能召回 ——
     # 因此把「我所在的团队」一并作为检索范围（个人库仍按 owner_id 隔离）。
     team_ids = await access.member_team_ids(db, user.id)
+
+    # 检索用谁的向量 Key：本次范围里若有团队库，优先用团队 Key（费用归团队）；
+    # 否则用提问者自己的 Key。向量模型固定，不同 Key 产生的向量等价，故不影响召回。
+    embed_team_id: str | None = None
+    if kb_ids:
+        rows = (
+            await db.execute(
+                select(KnowledgeBase.owner_type, KnowledgeBase.owner_id)
+                .where(KnowledgeBase.id.in_(kb_ids))
+                .where(KnowledgeBase.owner_type == "team")
+                .where(KnowledgeBase.owner_id.in_(team_ids or [""]))
+            )
+        ).all()
+        if rows:
+            embed_team_id = rows[0][1]
+    resolved_embed = await keyring.resolve_embedding_key(
+        db, team_id=embed_team_id, user_id=None if embed_team_id else user.id
+    )
+
     # search() 内部要调 embedding HTTP 接口 + 查 Chroma，是同步阻塞的；
     # 放在事件循环里会冻住整个服务（含其它接口），必须丢线程池。
     chunks = await asyncio.to_thread(
@@ -171,10 +192,27 @@ async def stream_answer(
             score_threshold if score_threshold is not None else settings.SCORE_THRESHOLD
         ),
         team_ids=team_ids,
+        embedding_api_key=resolved_embed.secret,
     )
 
     # ---------- 5. 选择生成模型与作答模式 ----------
     selected_model = llm.resolve_model(model_id)
+
+    # 生成用谁的密钥：与向量化同一套作用域规则
+    # （团队库用团队 Key → 个人库用本人 Key → 服务端 .env 兜底）。
+    # 只有归属方**自配**了 Key 才覆盖，否则保留服务端模型配置不动。
+    resolved_chat = await keyring.resolve_chat_key(
+        db, team_id=embed_team_id, user_id=None if embed_team_id else user.id
+    )
+    if resolved_chat.source in ("team", "user") and resolved_chat.usable:
+        selected_model = replace(
+            selected_model,
+            api_key=resolved_chat.secret,
+            model=resolved_chat.model or selected_model.model,
+            base_url=resolved_chat.base_url or selected_model.base_url,
+            label=f"{selected_model.label}"
+            + ("（团队密钥）" if resolved_chat.source == "team" else "（个人密钥）"),
+        )
 
     # 检索到了片段 ≠ 有依据。弱向量模型下无关问题也会返回高分片段
     # （实测"量子纠缠"拿到 0.83），若只看 chunks 是否为空，回退将永远不触发。

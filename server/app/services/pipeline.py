@@ -20,7 +20,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models import Document, KnowledgeBase, now_utc
-from app.services import chunking, parser, vectorstore
+from app.services import chunking, keyring, parser, vectorstore
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +47,12 @@ async def _process(document_id: str, reindex: bool) -> dict[str, Any]:
         uploader_id = document.uploaded_by or base.owner_id
         team_id = base.owner_id if (base.owner_type or "user") == "team" else None
         knowledge_base_name = base.name
+
+        # 向量化用谁的 Key：团队库用团队 Key → 个人库用本人 Key → 服务端 Key
+        resolved = await keyring.resolve_embedding_key(
+            db, team_id=team_id, user_id=None if team_id else uploader_id
+        )
+        embedding_key = resolved.secret
 
         # 重新处理前先清掉旧向量，避免重复累积
         removed = vectorstore.delete_document(document.id)
@@ -103,6 +109,7 @@ async def _process(document_id: str, reindex: bool) -> dict[str, Any]:
                 document_name=document.name,
                 chunks=payload,
                 team_id=team_id,
+                embedding_api_key=embedding_key,
             )
 
             # 4) 回填统计

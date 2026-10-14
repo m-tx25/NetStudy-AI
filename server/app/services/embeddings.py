@@ -30,6 +30,11 @@ MODE_DEFAULT = "chroma-default"
 
 _embeddings = None
 _mode: str | None = None
+# 按 API Key 缓存 embedder：团队/用户可各自配置自己的智谱 Key（费用各算各的）。
+# 注意**只换 Key、不换模型** —— 同一个 embedding-3 模型下不同 Key 产生的向量
+# 是等价的（同一向量空间），因此可以安全共用同一个 Chroma 集合。
+# 换模型会导致维度/语义不一致，必须换集合，故此处不支持。
+_embeddings_by_key: dict[str, object] = {}
 
 
 def resolve_api_key() -> str:
@@ -53,42 +58,59 @@ def is_zhipu_configured() -> bool:
     return bool(resolve_api_key())
 
 
-def get_embeddings():
-    """返回 LangChain 兼容的 Embeddings 实例（进程内复用）。"""
+def get_embeddings(api_key: str | None = None):
+    """返回 LangChain 兼容的 Embeddings 实例。
+
+    api_key 留空则用服务端配置的 Key（进程内复用）。
+    传入团队/用户自己的 Key 时按 Key 缓存实例 —— 索引与检索必须用**同一个 Key**，
+    否则会拿 A 的 Key 建库、用 B 的 Key 检索，虽然同模型向量空间一致（理论可行），
+    但计费与限流会错位，不利于排查。
+    """
     global _embeddings, _mode
 
-    if _embeddings is not None:
+    key = (api_key or "").strip() or resolve_api_key()
+
+    if not key:
+        _mode = MODE_DEFAULT
+        logger.info("向量化使用 Chroma 默认嵌入函数（未配置 ZHIPUAI_API_KEY）")
+        _embeddings = None  # 交给 Chroma 使用其内置默认实现
         return _embeddings
 
-    api_key = resolve_api_key()
-    if api_key:
-        try:
-            from langchain_community.embeddings import ZhipuAIEmbeddings
+    cached = _embeddings_by_key.get(key)
+    if cached is not None:
+        _embeddings = cached
+        _mode = MODE_ZHIPU
+        return cached
 
-            # LangChain 内部通过该环境变量取 key，这里显式写回，避免两处不一致
-            os.environ["ZHIPUAI_API_KEY"] = api_key
-            _embeddings = ZhipuAIEmbeddings(
-                model=settings.ZHIPUAI_EMBEDDING_MODEL,
-                api_key=api_key,
-                dimensions=settings.ZHIPUAI_EMBEDDING_DIM,
-            )
-            _mode = MODE_ZHIPU
-            logger.info(
-                "向量化使用智谱 %s（dimensions=%s）",
-                settings.ZHIPUAI_EMBEDDING_MODEL,
-                settings.ZHIPUAI_EMBEDDING_DIM,
-            )
-            return _embeddings
-        except ImportError:
-            logger.warning(
-                "未安装 langchain-community / zhipuai，降级为 Chroma 默认嵌入函数"
-            )
-        except Exception as exc:  # 模型名或维度不合法等
-            logger.warning("智谱向量模型初始化失败（%s），降级为 Chroma 默认嵌入函数", exc)
+    try:
+        from langchain_community.embeddings import ZhipuAIEmbeddings
+
+        # LangChain 内部通过该环境变量取 key，这里显式写回，避免两处不一致
+        os.environ["ZHIPUAI_API_KEY"] = key
+        instance = ZhipuAIEmbeddings(
+            model=settings.ZHIPUAI_EMBEDDING_MODEL,
+            api_key=key,
+            dimensions=settings.ZHIPUAI_EMBEDDING_DIM,
+        )
+        _embeddings_by_key[key] = instance
+        _embeddings = instance
+        _mode = MODE_ZHIPU
+        logger.info(
+            "向量化使用智谱 %s（dimensions=%s，Key 来源=%s）",
+            settings.ZHIPUAI_EMBEDDING_MODEL,
+            settings.ZHIPUAI_EMBEDDING_DIM,
+            "服务端" if key == resolve_api_key() else "团队/用户自备",
+        )
+        return instance
+    except ImportError:
+        logger.warning(
+            "未安装 langchain-community / zhipuai，降级为 Chroma 默认嵌入函数"
+        )
+    except Exception as exc:  # 模型名或维度不合法等
+        logger.warning("智谱向量模型初始化失败（%s），降级为 Chroma 默认嵌入函数", exc)
 
     _mode = MODE_DEFAULT
-    logger.info("向量化使用 Chroma 默认嵌入函数（未配置 ZHIPUAI_API_KEY）")
-    _embeddings = None  # 交给 Chroma 使用其内置默认实现
+    _embeddings = None
     return _embeddings
 
 
