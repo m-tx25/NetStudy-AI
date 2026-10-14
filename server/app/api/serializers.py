@@ -26,6 +26,9 @@ def knowledge_base_out(
 ) -> dict:
     return {
         "id": base.id,
+        # 归属：user=个人库 / team=团队库；前端据此分组展示「我的」与「团队」
+        "ownerType": getattr(base, "owner_type", None) or "user",
+        "ownerId": base.owner_id,
         "name": base.name,
         "description": base.description or "",
         "documentCount": int(document_count or 0),

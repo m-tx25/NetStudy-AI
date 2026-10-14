@@ -33,7 +33,7 @@ from app.models import (
     now_utc,
 )
 from app.rag import prompts
-from app.services import llm, vectorstore
+from app.services import access, llm, vectorstore
 from app.utils.ids import new_id
 
 
@@ -155,6 +155,9 @@ async def stream_answer(
     db.add(user_message)
 
     # ---------- 4. 检索（ChromaDB：向量 + 词面混合） ----------
+    # 团队知识库的切片带 team_id，提问者是团队成员就要能召回 ——
+    # 因此把「我所在的团队」一并作为检索范围（个人库仍按 owner_id 隔离）。
+    team_ids = await access.member_team_ids(db, user.id)
     # search() 内部要调 embedding HTTP 接口 + 查 Chroma，是同步阻塞的；
     # 放在事件循环里会冻住整个服务（含其它接口），必须丢线程池。
     chunks = await asyncio.to_thread(
@@ -167,6 +170,7 @@ async def stream_answer(
         score_threshold=(
             score_threshold if score_threshold is not None else settings.SCORE_THRESHOLD
         ),
+        team_ids=team_ids,
     )
 
     # ---------- 5. 选择生成模型与作答模式 ----------
