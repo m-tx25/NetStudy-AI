@@ -20,7 +20,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models import Document, KnowledgeBase, now_utc
-from app.services import chunking, parser, vectorstore
+from app.services import chunking, keyring, parser, vectorstore
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +41,18 @@ async def _process(document_id: str, reindex: bool) -> dict[str, Any]:
         if base is None:
             return {"ok": False, "documentId": document_id, "error": "所属知识库不存在"}
 
-        owner_id = base.owner_id
+        # 向量归属：owner_id 恒为「上传者用户 id」，团队库额外带 team_id。
+        # 不能直接用 base.owner_id —— 团队库的 owner_id 是团队 id，
+        # 与用户 id 不是一个命名空间，放进 Chroma 元数据会导致检索过滤错位。
+        uploader_id = document.uploaded_by or base.owner_id
+        team_id = base.owner_id if (base.owner_type or "user") == "team" else None
         knowledge_base_name = base.name
+
+        # 向量化用谁的 Key：团队库用团队 Key → 个人库用本人 Key → 服务端 Key
+        resolved = await keyring.resolve_embedding_key(
+            db, team_id=team_id, user_id=None if team_id else uploader_id
+        )
+        embedding_key = resolved.secret
 
         # 重新处理前先清掉旧向量，避免重复累积
         removed = vectorstore.delete_document(document.id)
@@ -92,12 +102,14 @@ async def _process(document_id: str, reindex: bool) -> dict[str, Any]:
             # 在文档处理期间完全无响应。
             stored = await asyncio.to_thread(
                 vectorstore.add_chunks,
-                owner_id=owner_id,
+                owner_id=uploader_id,
                 knowledge_base_id=base.id,
                 knowledge_base_name=knowledge_base_name,
                 document_id=document.id,
                 document_name=document.name,
                 chunks=payload,
+                team_id=team_id,
+                embedding_api_key=embedding_key,
             )
 
             # 4) 回填统计

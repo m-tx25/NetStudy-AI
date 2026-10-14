@@ -16,6 +16,7 @@ import DocumentTable from '@/components/knowledge/DocumentTable.vue'
 import UploadDialog from '@/components/knowledge/UploadDialog.vue'
 import { useKnowledgeStore } from '@/stores/knowledge'
 import { useChatStore } from '@/stores/chat'
+import { useTeamStore } from '@/stores/team'
 import { useSidebar } from '@/composables/useSidebar'
 import { formatDateTime } from '@/utils/format'
 import { notifyError } from '@/utils/notify'
@@ -23,6 +24,7 @@ import { notifyError } from '@/utils/notify'
 const router = useRouter()
 const knowledgeStore = useKnowledgeStore()
 const chatStore = useChatStore()
+const teamStore = useTeamStore()
 const { openMobileSidebar } = useSidebar()
 
 const uploadVisible = ref(false)
@@ -31,7 +33,7 @@ const baseDialogMode = ref('create')
 const baseFormRef = ref(null)
 const baseSaving = ref(false)
 
-const baseForm = reactive({ id: '', name: '', description: '' })
+const baseForm = reactive({ id: '', name: '', description: '', teamId: '' })
 
 const baseRules = {
   name: [
@@ -55,7 +57,8 @@ const baseStats = computed(() => {
 })
 
 onMounted(async () => {
-  await knowledgeStore.loadBases()
+  // 团队列表用于「新建知识库」时选择归属（个人 / 某团队）
+  await Promise.all([knowledgeStore.loadBases(), teamStore.loadTeams()])
   if (knowledgeStore.activeBaseId) await knowledgeStore.loadDocuments()
 })
 
@@ -70,7 +73,7 @@ watch(
 
 function openCreateDialog() {
   baseDialogMode.value = 'create'
-  Object.assign(baseForm, { id: '', name: '', description: '' })
+  Object.assign(baseForm, { id: '', name: '', description: '', teamId: '' })
   baseDialogVisible.value = true
 }
 
@@ -80,6 +83,7 @@ function openEditDialog(base) {
     id: base.id,
     name: base.name,
     description: base.description || '',
+    teamId: base.ownerType === 'team' ? base.ownerId : '',
   })
   baseDialogVisible.value = true
 }
@@ -98,6 +102,8 @@ async function submitBaseForm() {
       const created = await knowledgeStore.createBase({
         name: baseForm.name.trim(),
         description: baseForm.description.trim(),
+        // 选了团队则创建团队知识库（后端校验成员身份）
+        ...(baseForm.teamId ? { teamId: baseForm.teamId } : {}),
       })
       if (!created) return
       knowledgeStore.activeBaseId = created.id
@@ -249,6 +255,12 @@ function goChat() {
                   {{ base.name }}
                 </p>
                 <p class="mt-0.5 truncate text-[11px] app-muted">
+                  <span
+                    v-if="base.ownerType === 'team'"
+                    class="mr-1 rounded bg-brand/15 px-1 py-px text-[10px] text-brand"
+                  >
+                    团队
+                  </span>
                   {{ base.documentCount ?? 0 }} 篇 · {{ base.chunkCount ?? 0 }} 片段
                 </p>
               </div>
@@ -292,7 +304,7 @@ function goChat() {
             <el-option
               v-for="base in knowledgeStore.bases"
               :key="base.id"
-              :label="`${base.name}（${base.documentCount ?? 0} 篇）`"
+              :label="`${base.ownerType === 'team' ? '[团队] ' : ''}${base.name}（${base.documentCount ?? 0} 篇）`"
               :value="base.id"
             />
           </el-select>
@@ -303,8 +315,11 @@ function goChat() {
           <div class="border-b app-border px-4 py-4 md:px-6">
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div class="min-w-0">
-                <h2 class="truncate text-base font-semibold app-text">
-                  {{ activeBase.name }}
+                <h2 class="flex items-center gap-2 text-base font-semibold app-text">
+                  <span class="truncate">{{ activeBase.name }}</span>
+                  <el-tag v-if="activeBase.ownerType === 'team'" size="small" type="primary">
+                    团队知识库
+                  </el-tag>
                 </h2>
                 <p class="mt-1 text-xs leading-5 app-muted">
                   {{ activeBase.description || '暂无描述' }}
@@ -380,6 +395,19 @@ function goChat() {
       width="460px"
     >
       <el-form ref="baseFormRef" :model="baseForm" :rules="baseRules" label-position="top">
+        <el-form-item v-if="baseDialogMode === 'create' && teamStore.teams.length" label="归属">
+          <el-radio-group v-model="baseForm.teamId">
+            <el-radio value="">个人知识库</el-radio>
+            <el-radio v-for="team in teamStore.teams" :key="team.id" :value="team.id">
+              {{ team.name }}
+            </el-radio>
+          </el-radio-group>
+          <p class="mt-1 text-xs leading-5 app-muted">
+            选团队则创建团队知识库：团队成员都能看到并上传，检索全员可用；
+            向量化与生成使用该团队的 API 密钥（未配置则用服务端密钥）。
+          </p>
+        </el-form-item>
+
         <el-form-item label="名称" prop="name">
           <el-input v-model="baseForm.name" placeholder="例如：产品需求文档库" maxlength="40" show-word-limit />
         </el-form-item>

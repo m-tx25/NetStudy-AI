@@ -87,6 +87,8 @@ class KnowledgeBaseIn(CamelModel):
     name: str
     description: str = ""
     embedding_model: str | None = None
+    # 传团队 id 则创建团队知识库（需为该团队成员），留空创建个人库
+    team_id: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -107,6 +109,9 @@ class KnowledgeBaseUpdateIn(CamelModel):
 
 class KnowledgeBaseOut(CamelModel):
     id: str
+    # user=个人库 / team=团队库，前端据此分组与显示团队标签
+    owner_type: str = "user"
+    owner_id: str = ""
     name: str
     description: str = ""
     document_count: int = 0
@@ -206,142 +211,183 @@ class HealthOut(CamelModel):
     queue: dict[str, Any] = Field(default_factory=dict)
 
 
-# --------------------------------------------------------------------------
-# 用户自带模型（BYOM）
-# --------------------------------------------------------------------------
-class UserModelIn(CamelModel):
-    """用户在前端填写的模型配置。
-
-    典型用法：
-      · 本地 Ollama：baseUrl=http://127.0.0.1:11434/v1, model=qwen2.5:7b,
-                     apiKey 填任意非空值（Ollama 不校验，但后端要求非空才认为已配置）
-      · 云端 API  ：baseUrl=https://api.deepseek.com/v1, apiKey=sk-xxx,
-                     model=deepseek-chat
-    """
-
-    label: str
-    base_url: str
-    api_key: str
-    model: str
-    is_local: bool = False
-    temperature: float | None = None
-
-    @field_validator("label")
-    @classmethod
-    def _label_ok(cls, value: str) -> str:
-        value = (value or "").strip()
-        if not value:
-            raise ValueError("请填写模型名称（用于在列表里显示）")
-        return value[:64]
-
-    @field_validator("base_url")
-    @classmethod
-    def _base_url_ok(cls, value: str) -> str:
-        value = (value or "").strip()
-        if not value:
-            raise ValueError("请填写接口地址（本地模型形如 http://127.0.0.1:11434/v1）")
-        if not value.startswith(("http://", "https://")):
-            raise ValueError("接口地址需以 http:// 或 https:// 开头")
-        return value[:255]
-
-    @field_validator("model")
-    @classmethod
-    def _model_ok(cls, value: str) -> str:
-        value = (value or "").strip()
-        if not value:
-            raise ValueError("请填写模型名（如 qwen2.5:7b 或 deepseek-chat）")
-        return value[:128]
-
-    @field_validator("temperature")
-    @classmethod
-    def _temperature_ok(cls, value: float | None) -> float | None:
-        if value is None:
-            return None
-        if value < 0 or value > 2:
-            raise ValueError("temperature 需在 0~2 之间")
-        return value
-
-    @field_validator("api_key")
-    @classmethod
-    def _api_key_ok(cls, value: str) -> str:
-        """校验密钥可放进 HTTP 请求头。
-
-        为什么必须校验：HTTP 头只能承载 ASCII（latin-1）。
-        若密钥里混入中文，httpx 构造请求头时会抛 UnicodeEncodeError，
-        表现为接口 500 —— 用户完全看不懂，也猜不到是密钥格式问题。
-
-        实测最常见的两种情况：
-          1. 把**上一次的报错信息**整段粘了进来（如「连接测试未通过：...」）；
-          2. 从网页复制时带上了中文说明或全角引号。
-        这里都识别出来，并直接说清是什么问题。
-        """
-        raw = (value or "").strip()
-        if not raw:
-            return raw
-
-        # 情况一：明显是报错文案或说明文字，而不是密钥。
-        # 只有在「同时含非 ASCII 字符」且「出现报错措辞」时才这样判定，
-        # 纯 ASCII 的字符串不会被误伤（真实密钥都是 ASCII）。
-        noise_markers = ("连接测试", "未通过", "失败", "错误", "请检查", "无效", "非法")
-        has_non_ascii = any(ord(ch) > 127 for ch in raw)
-        if has_non_ascii and any(marker in raw for marker in noise_markers):
-            raise ValueError(
-                "这看起来不是 API Key，而是把提示文字/报错信息粘贴进来了。"
-                "请只填写服务商给你的一串密钥（DeepSeek 形如 sk-xxxxxxxx）。"
-            )
-
-        # 情况二：含非 ASCII 字符
-        try:
-            raw.encode("ascii")
-        except UnicodeEncodeError as exc:
-            bad = raw[exc.start : exc.end]
-            raise ValueError(
-                f"API Key 里出现了中文字符（{bad!r}），而密钥只能是英文字母和数字。"
-                "请检查是否从网页复制时把中文说明或全角符号一起带进来了。"
-            ) from exc
-
-        if any(ch.isspace() for ch in raw):
-            raise ValueError("API Key 中间不能有空格或换行，请检查是否复制了多余字符")
-
-        # 情况三：形状不像密钥（给出提示但不强制拒绝，兼容自定义网关）
-        if len(raw) < 16:
-            raise ValueError(
-                f"API Key 太短（当前 {len(raw)} 个字符），看起来不完整。"
-                "DeepSeek 的密钥形如 sk- 开头、约 35 个字符。"
-            )
-        return raw
-
-
-class UserModelUpdateIn(CamelModel):
-    """更新用户模型。**apiKey 留空表示不修改**（界面不回显密钥，避免误清空）。"""
-
-    label: str | None = None
-    base_url: str | None = None
-    api_key: str | None = None
-    model: str | None = None
-    is_local: bool | None = None
-    temperature: float | None = None
-
-
-class UserModelOut(CamelModel):
-    """对外的模型信息 —— **绝不含密钥**，只告知是否已配置。"""
+# ==========================================================================
+# 团队
+# ==========================================================================
+class UserBrief(CamelModel):
+    """成员展示用的精简用户信息（不含邮箱等敏感字段）。"""
 
     id: str
-    label: str
-    model: str
-    kind: str = "api"
-    configured: bool = False
-    is_default: bool = False
-    builtin: bool = False
-    editable: bool = False
+    username: str
+    nickname: str = ""
+    avatar: str = ""
+
+
+class TeamCreateIn(CamelModel):
+    name: str
+    description: str = ""
+    visibility: Literal["public", "private"] = "public"
+    join_policy: Literal["open", "approval", "closed"] = "approval"
+
+    @field_validator("name")
+    @classmethod
+    def _name_required(cls, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise ValueError("团队名称不能为空")
+        if len(value) > 64:
+            raise ValueError("团队名称不能超过 64 个字符")
+        return value
+
+
+class TeamUpdateIn(CamelModel):
+    name: str | None = None
+    description: str | None = None
+    visibility: Literal["public", "private"] | None = None
+    join_policy: Literal["open", "approval", "closed"] | None = None
+
+
+class TeamOut(CamelModel):
+    id: str
+    name: str
+    description: str = ""
+    visibility: str = "public"
+    join_policy: str = "approval"
+    # 仅 owner / admin 会拿到邀请码，普通成员为 None
+    invite_code: str | None = None
+    owner_id: str
+    owner: UserBrief | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+    # 当前登录者在该团队中的角色；非成员为 None
+    my_role: str | None = None
+    member_count: int = 0
+    knowledge_base_count: int = 0
+    # 当前登录者是否有待审批的申请
+    my_request_status: str | None = None
+    pending_request_count: int = 0
+
+
+class TeamMemberOut(CamelModel):
+    id: str
+    user_id: str
+    role: str
+    joined_at: str | None = None
+    user: UserBrief | None = None
+
+
+class TeamMemberAddIn(CamelModel):
+    """owner/admin 直接拉人（免审批）。"""
+
+    username: str
+    role: Literal["admin", "member"] = "member"
+
+
+class TeamMemberRoleIn(CamelModel):
+    role: Literal["admin", "member"]
+
+
+class TeamTransferIn(CamelModel):
+    """转让负责人：目标必须是该团队成员。"""
+
+    user_id: str
+
+
+class TeamJoinIn(CamelModel):
+    """申请入队（搜索或邀请码）。"""
+
+    message: str = ""
+    invite_code: str | None = None
+
+
+class TeamJoinRequestOut(CamelModel):
+    id: str
+    team_id: str
+    team_name: str = ""
+    user_id: str
+    user: UserBrief | None = None
+    message: str = ""
+    source: str = "search"
+    status: str = "pending"
+    created_at: str | None = None
+    handled_at: str | None = None
+
+
+class TeamJoinHandleIn(CamelModel):
+    approve: bool
+    role: Literal["admin", "member"] = "member"
+
+
+# ==========================================================================
+# API 密钥
+# ==========================================================================
+class ApiKeyIn(CamelModel):
+    provider: str
+    secret: str
+    label: str = ""
+    model: str = ""
+    base_url: str = ""
+    enabled: bool = True
+
+    @field_validator("secret")
+    @classmethod
+    def _secret_required(cls, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise ValueError("密钥不能为空")
+        return value
+
+
+class ApiKeyUpdateIn(CamelModel):
+    """更新时 secret 留空表示「不改密钥，只改其它字段」。"""
+
+    secret: str | None = None
+    label: str | None = None
+    model: str | None = None
     base_url: str | None = None
-    has_api_key: bool = False
-    is_local: bool = False
-    temperature: float | None = None
+    enabled: bool | None = None
 
 
-class ModelListOut(CamelModel):
-    models: list[UserModelOut] = Field(default_factory=list)
-    default_id: str = ""
-    fallback_to_model: bool = True
-    presets: list[dict[str, Any]] = Field(default_factory=list)
+class ApiKeyOut(CamelModel):
+    id: str
+    provider: str
+    provider_label: str = ""
+    label: str = ""
+    # 掩码，绝不下发明文
+    masked: str = ""
+    model: str = ""
+    base_url: str = ""
+    enabled: bool = True
+    capabilities: list[str] = Field(default_factory=list)
+    created_at: str | None = None
+    updated_at: str | None = None
+    # 是否为当前实际生效的密钥（同 provider 下只解析一条）
+    is_active: bool = False
+
+
+class ProviderOut(CamelModel):
+    id: str
+    label: str
+    capabilities: list[str] = Field(default_factory=list)
+    default_base_url: str = ""
+    default_embedding_model: str = ""
+    default_chat_model: str = ""
+    key_hint: str = ""
+    apply_url: str = ""
+
+
+class ApiKeyScopesOut(CamelModel):
+    """密钥总览：供应商清单 + 各作用域已配置情况。"""
+
+    providers: list[ProviderOut] = Field(default_factory=list)
+    user_keys: list[ApiKeyOut] = Field(default_factory=list)
+    team_keys: list[ApiKeyOut] = Field(default_factory=list)
+    effective: dict[str, Any] = Field(default_factory=dict)
+
+
+class ModelOptionOut(CamelModel):
+    id: str
+    label: str
+    model: str = ""
+    configured: bool = False
+    source: str = "server"

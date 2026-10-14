@@ -19,7 +19,7 @@ from app.api.serializers import document_out
 from app.core.config import settings
 from app.models import Document, KnowledgeBase, now_utc
 from app.schemas import DocumentOut, DocumentUpdateIn, OkOut
-from app.services import chunking, parser, vectorstore
+from app.services import access, chunking, keyring, parser, vectorstore
 from app.tasks import dispatch_process_document
 from app.utils.ids import new_id
 
@@ -39,12 +39,14 @@ def _uploads_dir() -> Path:
 
 
 async def _get_owned_document(db: DbSession, document_id: str, user_id: str) -> Document:
+    """取文档：个人库看归属，团队库看成员身份（规则见 services/access.py）。"""
+    team_ids = await access.member_team_ids(db, user_id)
     document = (
         await db.execute(
             select(Document)
             .join(KnowledgeBase, Document.knowledge_base_id == KnowledgeBase.id)
             .where(Document.id == document_id)
-            .where(KnowledgeBase.owner_id == user_id)
+            .where(access.accessible_condition(user_id, team_ids))
         )
     ).scalar_one_or_none()
     if document is None:
@@ -70,10 +72,11 @@ async def list_documents(
     db: DbSession,
     knowledge_base_id: str | None = Query(default=None, alias="knowledgeBaseId"),
 ) -> list[DocumentOut]:
+    team_ids = await access.member_team_ids(db, user.id)
     statement = (
         select(Document)
         .join(KnowledgeBase, Document.knowledge_base_id == KnowledgeBase.id)
-        .where(KnowledgeBase.owner_id == user.id)
+        .where(access.accessible_condition(user.id, team_ids))
     )
     if knowledge_base_id:
         statement = statement.where(Document.knowledge_base_id == knowledge_base_id)
@@ -106,13 +109,9 @@ async def upload_document(
     if not filename:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="未获取到文件名")
 
-    base = (
-        await db.execute(
-            select(KnowledgeBase)
-            .where(KnowledgeBase.id == knowledge_base_id)
-            .where(KnowledgeBase.owner_id == user.id)
-        )
-    ).scalar_one_or_none()
+    # 上传目标知识库：个人库需本人拥有，团队库需本人是团队成员
+    # （团队知识库对成员开放上传，这是团队协作的核心诉求）
+    base = await access.get_accessible(db, knowledge_base_id, user.id)
     if base is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="知识库不存在")
 
@@ -155,6 +154,7 @@ async def upload_document(
         id=document_id,
         knowledge_base_id=base.id,
         name=filename[:512],
+        uploaded_by=user.id,
         stored_path=str(target),
         size=written,
         chunks=0,
@@ -238,16 +238,24 @@ async def _reindex_vectors(db: DbSession, document: Document) -> None:
                     int(page) if isinstance(page, (int, float)) and page else None,
                 )
             )
-        # 同步阻塞调用（智谱 embedding + Chroma 写入）必须丢线程池，
-        # 否则会冻住事件循环，整个服务在向量化期间无响应。
+        # 向量化用谁的 Key：团队库用团队 Key → 个人库用上传者 Key → 服务端 Key
+        _team_id = base.owner_id if (base.owner_type or "user") == "team" else None
+        _resolved = await keyring.resolve_embedding_key(
+            db,
+            team_id=_team_id,
+            user_id=None if _team_id else (document.uploaded_by or user.id),
+        )
+        # 向量归属：owner_id 用上传者，团队库额外带 team_id（见 pipeline.py 说明）
         stored = await asyncio.to_thread(
             vectorstore.add_chunks,
-            owner_id=base.owner_id,
+            owner_id=document.uploaded_by or base.owner_id,
             knowledge_base_id=base.id,
             knowledge_base_name=base.name,
             document_id=document.id,
             document_name=document.name,
             chunks=payload,
+            team_id=_team_id,
+            embedding_api_key=_resolved.secret,
         )
         document.chunks = stored
     except Exception as exc:
