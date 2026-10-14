@@ -321,6 +321,57 @@ class TeamJoinHandleIn(CamelModel):
 # ==========================================================================
 # API 密钥
 # ==========================================================================
+def validate_api_secret(value: str, *, field: str = "密钥") -> str:
+    """校验密钥能安全放进 HTTP 请求头。
+
+    为什么必须校验（实测踩过的坑）：
+      HTTP 请求头只能承载 ASCII。若密钥里混入中文，httpx 构造请求头时会抛
+      UnicodeEncodeError，接口直接 500 —— 用户只看到「服务器异常」，
+      完全猜不到是密钥格式问题。
+
+    两种情况最常见：
+      1. 把**上一次的报错信息**整段粘了进来（如「连接测试未通过：...」）；
+      2. 从网页复制时带上了中文说明或全角引号。
+
+    ApiKeyIn / ApiKeyUpdateIn 共用本函数，避免两处校验不一致。
+    """
+    raw = (value or "").strip()
+    if not raw:
+        return raw
+
+    has_non_ascii = any(ord(ch) > 127 for ch in raw)
+
+    # 情况一：明显是报错文案或说明文字（同时含非 ASCII 与报错措辞才判定，避免误伤）
+    noise_markers = ("连接测试", "未通过", "失败", "错误", "请检查", "无效", "非法")
+    if has_non_ascii and any(marker in raw for marker in noise_markers):
+        raise ValueError(
+            f"这看起来不是{field}，而是把提示文字/报错信息粘贴进来了。"
+            "请只填写服务商给你的一串密钥（DeepSeek 形如 sk-xxxxxxxx）。"
+        )
+
+    # 情况二：含非 ASCII 字符
+    if has_non_ascii:
+        try:
+            raw.encode("ascii")
+        except UnicodeEncodeError as exc:
+            bad = raw[exc.start : exc.end]
+            raise ValueError(
+                f"{field}里出现了中文字符（{bad!r}），而密钥只能是英文字母和数字。"
+                "请检查是否从网页复制时把中文说明或全角符号一起带进来了。"
+            ) from exc
+
+    if any(ch.isspace() for ch in raw):
+        raise ValueError(f"{field}中间不能有空格或换行，请检查是否复制了多余字符")
+
+    # 情况三：明显不完整的密钥（给出提示，便于用户自查复制是否漏了字符）
+    if len(raw) < 16:
+        raise ValueError(
+            f"{field}太短（当前 {len(raw)} 个字符），看起来不完整。"
+            "DeepSeek 的密钥形如 sk- 开头、约 35 个字符。"
+        )
+    return raw
+
+
 class ApiKeyIn(CamelModel):
     provider: str
     secret: str
@@ -335,7 +386,7 @@ class ApiKeyIn(CamelModel):
         value = (value or "").strip()
         if not value:
             raise ValueError("密钥不能为空")
-        return value
+        return validate_api_secret(value)
 
 
 class ApiKeyUpdateIn(CamelModel):
@@ -346,6 +397,14 @@ class ApiKeyUpdateIn(CamelModel):
     model: str | None = None
     base_url: str | None = None
     enabled: bool | None = None
+
+    @field_validator("secret")
+    @classmethod
+    def _secret_ok(cls, value: str | None) -> str | None:
+        # 留空 = 不修改密钥；填写则必须通过同一套校验
+        if value is None or not value.strip():
+            return None
+        return validate_api_secret(value)
 
 
 class ApiKeyOut(CamelModel):
