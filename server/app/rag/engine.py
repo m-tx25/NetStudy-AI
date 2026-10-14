@@ -33,7 +33,7 @@ from app.models import (
     now_utc,
 )
 from app.rag import prompts
-from app.services import llm, vectorstore
+from app.services import llm, model_config, vectorstore
 from app.utils.ids import new_id
 
 
@@ -170,7 +170,8 @@ async def stream_answer(
     )
 
     # ---------- 5. 选择生成模型与作答模式 ----------
-    selected_model = llm.resolve_model(model_id)
+    # 按用户解析：优先用户自己添加的模型，其次内置模型，最后回退默认模型。
+    selected_model = await model_config.resolve(db, user.id, model_id)
 
     # 检索到了片段 ≠ 有依据。弱向量模型下无关问题也会返回高分片段
     # （实测"量子纠缠"拿到 0.83），若只看 chunks 是否为空，回退将永远不触发。
@@ -239,10 +240,9 @@ async def stream_answer(
         messages = prompts.build_messages(
             question, context_chunks, history, grounded=grounded
         )
-        if not grounded:
-            # 标注由服务端直接下发，不依赖模型自觉 —— 保证用户一定看得到
-            collected.append(prompts.FALLBACK_BANNER)
-            yield {"type": "delta", "content": prompts.FALLBACK_BANNER}
+        # 说明：无依据时的「非知识库依据」标注由**前端**渲染（见 MessageItem.vue），
+        # 这里不再往正文插入，否则界面上会出现两份重复提示。
+        # 模型侧仍通过 FALLBACK_SYSTEM_PROMPT 被告知：不要编造内部信息、不要引用资料。
 
         try:
             async for piece in llm.stream_chat(

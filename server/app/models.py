@@ -192,3 +192,35 @@ class MessageSource(Base):
     ordinal: Mapped[int] = mapped_column(Integer, default=0)
 
     message: Mapped[Message] = relationship(back_populates="sources")
+
+
+class UserModelConfig(Base):
+    """用户自带的生成模型（BYOM）。
+
+    用途：让用户在前端自己填写模型 —— 既可以是本地部署（Ollama / vLLM / LM Studio），
+    也可以是任意 OpenAI 兼容的云端 API，密钥由用户提供。
+
+    安全约定：
+      - `api_key` 存的是**密文**（见 app/core/crypto.py），绝不存明文；
+      - 该字段**永远不会**出现在任何 API 响应里，前端只知道「是否已配置」；
+      - 与环境变量里的内置模型分开管理：内置模型全用户共享、用户不可改。
+    """
+
+    __tablename__ = "user_model_configs"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    label: Mapped[str] = mapped_column(String(64))
+    base_url: Mapped[str] = mapped_column(String(255))
+    # 加密后的密钥；空串表示未配置（例如本地服务不需要密钥）
+    api_key: Mapped[str] = mapped_column(Text, default="")
+    model_name: Mapped[str] = mapped_column(String(128))
+    # True 表示本地部署（界面会显示「本地」标签，并给出连通性提示）
+    is_local: Mapped[bool] = mapped_column(Boolean, default=False)
+    temperature: Mapped[float] = mapped_column(Float, default=0.3)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=now_utc, onupdate=now_utc
+    )

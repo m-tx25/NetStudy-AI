@@ -28,6 +28,8 @@ export const STORAGE_KEYS = {
   user: 'rag.user',
   theme: 'rag.theme',
   activeKnowledgeBases: 'rag.active_kb',
+  /** 用户选择的生成模型 id（见 GET /api/chat/models） */
+  selectedModel: 'rag.model',
 }
 
 /** 知识库文档上传限制（与后端保持一致即可） */

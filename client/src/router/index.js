@@ -79,8 +79,16 @@ const router = createRouter({
   scrollBehavior: (to) => (to.hash ? { el: to.hash, behavior: 'smooth' } : { top: 0 }),
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const userStore = useUserStore()
+
+  // 进入需要登录的页面前，先确认本地 token 真的还有效。
+  // 仅判断「本地有没有 token」是不够的：后端换过 SECRET_KEY、改过密码或重建过库之后，
+  // 旧 token 依然存在于 localStorage，守卫会放行，页面随即并发请求全部 401，
+  // 用户看到「登录状态已失效」却不知道发生了什么。
+  if (to.meta.requiresAuth) {
+    await userStore.ensureSessionChecked()
+  }
 
   if (to.meta.requiresAuth && !userStore.isAuthenticated) {
     return { name: 'login', query: to.fullPath === '/' ? {} : { redirect: to.fullPath } }

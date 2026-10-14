@@ -3,11 +3,17 @@ import { defineStore } from 'pinia'
 
 import {
   createConversation,
+  createModel,
   deleteConversation,
+  deleteModel,
+  fetchChatConfig,
   listConversations,
   listMessages,
+  listModels,
+  probeModel,
   streamChat,
   updateConversation,
+  updateModel,
 } from '@/api/chat'
 import { createTypewriter } from '@/composables/useTypewriter'
 import { RAG_DEFAULTS, STORAGE_KEYS } from '@/config'
@@ -28,6 +34,23 @@ function readSelectedBases() {
 function persistSelectedBases(ids) {
   try {
     localStorage.setItem(STORAGE_KEYS.activeKnowledgeBases, JSON.stringify(ids))
+  } catch {
+    /* ignore */
+  }
+}
+
+function readSelectedModel() {
+  try {
+    return localStorage.getItem(STORAGE_KEYS.selectedModel) || ''
+  } catch {
+    return ''
+  }
+}
+
+function persistSelectedModel(id) {
+  try {
+    if (id) localStorage.setItem(STORAGE_KEYS.selectedModel, id)
+    else localStorage.removeItem(STORAGE_KEYS.selectedModel)
   } catch {
     /* ignore */
   }
@@ -60,6 +83,90 @@ export const useChatStore = defineStore('chat', () => {
   const selectedKnowledgeBaseIds = ref(readSelectedBases())
   const topK = ref(RAG_DEFAULTS.topK)
   const scoreThreshold = ref(RAG_DEFAULTS.scoreThreshold)
+
+  /* ---------------------------------------------------------------- *
+   * 生成模型（与向量化模型无关）
+   *
+   * 说明：知识库里检索不到依据时，后端会改用模型自身知识作答，
+   * 并在回答前加「非知识库依据」标注。这里负责模型选择与来源状态。
+   * ---------------------------------------------------------------- */
+  const models = ref([])
+  const modelsLoading = ref(false)
+  const selectedModelId = ref(readSelectedModel())
+  /** 服务端是否允许「无依据时回退到模型自身知识」 */
+  const fallbackToModel = ref(true)
+  /** 本地模型预设（Ollama / vLLM / LM Studio），供一键填入 */
+  const modelPresets = ref([])
+
+  const activeModel = computed(
+    () => models.value.find((item) => item.id === selectedModelId.value) || models.value[0] || null,
+  )
+
+  async function loadModels() {
+    modelsLoading.value = true
+    try {
+      const data = await listModels()
+      models.value = Array.isArray(data?.models) ? data.models : []
+      modelPresets.value = Array.isArray(data?.presets) ? data.presets : []
+      if (typeof data?.fallbackToModel === 'boolean') fallbackToModel.value = data.fallbackToModel
+      // 本地存的模型可能已从服务端移除，或首次使用未选择 → 回落到默认模型
+      const exists = models.value.some((item) => item.id === selectedModelId.value)
+      if (!exists) selectModel(data?.defaultId || models.value[0]?.id || '')
+      return models.value
+    } catch (error) {
+      notifyError(error, '模型列表加载失败')
+      return []
+    } finally {
+      modelsLoading.value = false
+    }
+  }
+
+  function selectModel(id) {
+    selectedModelId.value = id || ''
+    persistSelectedModel(selectedModelId.value)
+  }
+
+  /* ---------------- 用户自带模型的管理 ---------------- */
+
+  /** 新增模型；成功后自动选中它 */
+  async function addModel(payload) {
+    const created = await createModel(payload)
+    await loadModels()
+    if (created?.id) selectModel(created.id)
+    return created
+  }
+
+  /** 修改模型；payload.apiKey 留空表示不修改密钥 */
+  async function editModel(id, payload) {
+    const updated = await updateModel(id, payload)
+    await loadModels()
+    return updated
+  }
+
+  /** 删除模型；若删的是当前选中项，自动切回默认模型 */
+  async function removeModel(id) {
+    await deleteModel(id)
+    if (selectedModelId.value === id) selectModel('')
+    await loadModels()
+    return true
+  }
+
+  /** 连通性自检 */
+  async function checkModel(id) {
+    return probeModel(id)
+  }
+
+  /** 读取服务端 RAG 参数（Top-K / 阈值 / 回退开关），避免两端各写一份 */
+  async function loadChatConfig() {
+    try {
+      const config = await fetchChatConfig()
+      if (typeof config?.fallbackToModel === 'boolean') fallbackToModel.value = config.fallbackToModel
+      return config
+    } catch {
+      // 拿不到就用本地默认值，不打断使用
+      return null
+    }
+  }
 
   const activeConversation = computed(
     () => conversations.value.find((item) => item.id === activeConversationId.value) || null,
@@ -234,6 +341,12 @@ export const useChatStore = defineStore('chat', () => {
       createdAt: new Date().toISOString(),
       status: 'streaming',
       error: '',
+      // knowledge_base（有检索依据）/ model（模型自身知识）/ none（未生成）
+      source: 'knowledge_base',
+      // 本次回答使用的模型（展示用）
+      modelLabel: '',
+      /** 是否知识库中未检索到依据（用于显示醒目提示） */
+      grounded: true,
     })
 
     const writer = createTypewriter({
@@ -292,6 +405,8 @@ export const useChatStore = defineStore('chat', () => {
           knowledgeBaseIds: [...selectedKnowledgeBaseIds.value],
           topK: topK.value,
           scoreThreshold: scoreThreshold.value,
+          // 生成模型（不影响检索用的向量化模型）
+          modelId: selectedModelId.value || undefined,
         },
         {
           signal: controller.signal,
@@ -299,6 +414,12 @@ export const useChatStore = defineStore('chat', () => {
             if (!isCurrentStream()) return
 
             switch (event.type) {
+              case 'meta':
+                // 后端在正文之前就告知本次是否有知识库依据，前端可即时提示
+                if (typeof event.grounded === 'boolean') assistant.grounded = event.grounded
+                if (event.answerSource) assistant.source = event.answerSource
+                if (event.modelLabel) assistant.modelLabel = event.modelLabel
+                break
               case 'delta':
                 assistant.status = 'streaming'
                 writer.push(event.content)
@@ -308,6 +429,9 @@ export const useChatStore = defineStore('chat', () => {
                 break
               case 'done':
                 assistant.serverId = event.messageId || assistant.serverId
+                if (event.source) assistant.source = event.source
+                if (typeof event.grounded === 'boolean') assistant.grounded = event.grounded
+                if (event.modelLabel) assistant.modelLabel = event.modelLabel
                 break
               case 'title': {
                 const conversation = conversations.value.find((item) => item.id === conversationId)
@@ -407,6 +531,20 @@ export const useChatStore = defineStore('chat', () => {
     selectedKnowledgeBaseIds,
     topK,
     scoreThreshold,
+    // 生成模型与回退状态
+    models,
+    modelsLoading,
+    modelPresets,
+    selectedModelId,
+    activeModel,
+    fallbackToModel,
+    loadModels,
+    selectModel,
+    addModel,
+    editModel,
+    removeModel,
+    checkModel,
+    loadChatConfig,
     loadConversations,
     openConversation,
     startNewConversation,

@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { Expand, Moon, Plus, Sunny } from '@element-plus/icons-vue'
 
 import KnowledgeSelector from '@/components/chat/KnowledgeSelector.vue'
+import ModelSelector from '@/components/chat/ModelSelector.vue'
 import { useChatStore } from '@/stores/chat'
 import { useSidebar } from '@/composables/useSidebar'
 import { useTheme } from '@/composables/useTheme'
@@ -47,6 +48,8 @@ function newChat() {
       </h1>
       <p class="truncate text-[11px] app-muted">{{ subtitle }}</p>
     </div>
+
+    <ModelSelector />
 
     <KnowledgeSelector />
 

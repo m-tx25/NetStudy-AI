@@ -57,8 +57,22 @@ export function apiUrl(path) {
  * ------------------------------------------------------------------ */
 let unauthorizedHandler = null
 
+/**
+ * 是否已经就本次「登录失效」提示/跳转过。
+ *
+ * 页面初始化会并发发出多个请求，token 失效时它们会同时返回 401。
+ * 若每个都弹提示、都跳转，用户会看到多条重复弹窗。
+ * 登录成功或重新进入应用时由 setUnauthorizedHandler 的调用方重置。
+ */
+let unauthorizedNotified = false
+
 export function setUnauthorizedHandler(handler) {
   unauthorizedHandler = handler
+}
+
+/** 登录成功后调用，允许下一次失效时再次提示 */
+export function resetUnauthorizedNotified() {
+  unauthorizedNotified = false
 }
 
 /* ------------------------------------------------------------------ *
@@ -122,7 +136,17 @@ request.interceptors.response.use(
     if (status === 401) {
       clearToken()
       message = '登录状态已失效，请重新登录'
-      if (typeof unauthorizedHandler === 'function') unauthorizedHandler()
+      // 并发请求会同时收到 401，这里只弹一次、只跳转一次，
+      // 否则用户会被多条相同提示与重复跳转淹没。
+      if (!unauthorizedNotified) {
+        unauthorizedNotified = true
+        if (typeof unauthorizedHandler === 'function') unauthorizedHandler()
+      } else {
+        // 已提示过：静默失败，不再弹窗
+        const apiError = new ApiError(message, { status, payload: error.response?.data })
+        apiError.__notified = true
+        return Promise.reject(apiError)
+      }
     } else if (status === 403) {
       message = '没有权限执行该操作'
     } else if (status === 404) {
