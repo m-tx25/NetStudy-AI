@@ -3,17 +3,13 @@ import { defineStore } from 'pinia'
 
 import {
   createConversation,
-  createModel,
   deleteConversation,
-  deleteModel,
   fetchChatConfig,
   listConversations,
   listMessages,
   listModels,
-  probeModel,
   streamChat,
   updateConversation,
-  updateModel,
 } from '@/api/chat'
 import { createTypewriter } from '@/composables/useTypewriter'
 import { RAG_DEFAULTS, STORAGE_KEYS } from '@/config'
@@ -95,8 +91,6 @@ export const useChatStore = defineStore('chat', () => {
   const selectedModelId = ref(readSelectedModel())
   /** 服务端是否允许「无依据时回退到模型自身知识」 */
   const fallbackToModel = ref(true)
-  /** 本地模型预设（Ollama / vLLM / LM Studio），供一键填入 */
-  const modelPresets = ref([])
 
   const activeModel = computed(
     () => models.value.find((item) => item.id === selectedModelId.value) || models.value[0] || null,
@@ -107,7 +101,6 @@ export const useChatStore = defineStore('chat', () => {
     try {
       const data = await listModels()
       models.value = Array.isArray(data?.models) ? data.models : []
-      modelPresets.value = Array.isArray(data?.presets) ? data.presets : []
       if (typeof data?.fallbackToModel === 'boolean') fallbackToModel.value = data.fallbackToModel
       // 本地存的模型可能已从服务端移除，或首次使用未选择 → 回落到默认模型
       const exists = models.value.some((item) => item.id === selectedModelId.value)
@@ -126,35 +119,11 @@ export const useChatStore = defineStore('chat', () => {
     persistSelectedModel(selectedModelId.value)
   }
 
-  /* ---------------- 用户自带模型的管理 ---------------- */
+  /* ---------------- 模型清单 ---------------- */
 
-  /** 新增模型；成功后自动选中它 */
-  async function addModel(payload) {
-    const created = await createModel(payload)
-    await loadModels()
-    if (created?.id) selectModel(created.id)
-    return created
-  }
-
-  /** 修改模型；payload.apiKey 留空表示不修改密钥 */
-  async function editModel(id, payload) {
-    const updated = await updateModel(id, payload)
-    await loadModels()
-    return updated
-  }
-
-  /** 删除模型；若删的是当前选中项，自动切回默认模型 */
-  async function removeModel(id) {
-    await deleteModel(id)
-    if (selectedModelId.value === id) selectModel('')
-    await loadModels()
-    return true
-  }
-
-  /** 连通性自检 */
-  async function checkModel(id) {
-    return probeModel(id)
-  }
+  // 模型/密钥的新增·修改·删除统一在「设置 → API 密钥」页完成
+  // （个人密钥 /api/keys，团队密钥 /api/teams/{id}/keys），
+  // 因此这里只保留清单加载（loadModels）与选用（selectModel）。
 
   /** 读取服务端 RAG 参数（Top-K / 阈值 / 回退开关），避免两端各写一份 */
   async function loadChatConfig() {
@@ -534,16 +503,11 @@ export const useChatStore = defineStore('chat', () => {
     // 生成模型与回退状态
     models,
     modelsLoading,
-    modelPresets,
     selectedModelId,
     activeModel,
     fallbackToModel,
     loadModels,
     selectModel,
-    addModel,
-    editModel,
-    removeModel,
-    checkModel,
     loadChatConfig,
     loadConversations,
     openConversation,

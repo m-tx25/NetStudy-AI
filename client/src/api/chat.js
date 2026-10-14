@@ -49,53 +49,12 @@ export function fetchChatConfig() {
 }
 
 /* ------------------------------------------------------------------ *
- * 用户自带模型（BYOM）
+ * 模型清单
  *
- * 密钥由用户在前端填写，提交给后端**加密存储**，之后不会再下发回来；
- * 因此编辑时若密钥留空，表示「沿用原密钥」。
+ * 说明：密钥与模型的新增/修改/删除在「设置 → API 密钥」页完成
+ * （见 api/keys.js：个人密钥 /api/keys、团队密钥 /api/teams/{id}/keys）。
+ * 这里只提供「可选项清单」，供问答页的下拉选择使用。
  * ------------------------------------------------------------------ */
-
-/** 新增一个模型（本地部署或云端 API） */
-export function createModel(payload) {
-  if (isMockMode) return mockCreateModel(payload)
-  return request.post('/chat/models', payload)
-}
-
-/** 修改模型；payload.apiKey 留空表示不修改密钥 */
-export function updateModel(id, payload) {
-  if (isMockMode) return mockUpdateModel(id, payload)
-  return request.patch(`/chat/models/${id}`, payload)
-}
-
-export function deleteModel(id) {
-  if (isMockMode) return mockDeleteModel(id)
-  return request.delete(`/chat/models/${id}`)
-}
-
-/** 连通性自检：发一次极小请求，立刻知道模型能不能用 */
-export function probeModel(id) {
-  if (isMockMode) return Promise.resolve({ ok: true, note: 'Mock 模式无需探测' })
-  // 探测可能等待 15 秒（本地服务未启动时要等超时），单独放宽超时
-  return request.post(`/chat/models/${id}/probe`, {}, { timeout: 25000, silent: true })
-}
-
-function mockCreateModel(payload) {
-  return Promise.resolve({
-    id: `user:mock_${Date.now()}`,
-    label: payload.label,
-    model: payload.model,
-    kind: payload.isLocal ? 'local' : 'api',
-    configured: true,
-  })
-}
-
-function mockUpdateModel(id, payload) {
-  return Promise.resolve({ id, label: payload.label, model: payload.model, configured: true })
-}
-
-function mockDeleteModel() {
-  return Promise.resolve({ ok: true })
-}
 
 /** Mock 模式下的模型清单：与后端结构保持一致，便于两种模式无差别对接 */
 function mockListModels() {
