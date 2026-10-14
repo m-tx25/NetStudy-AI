@@ -147,6 +147,10 @@ async def _ensure_columns() -> None:
     async with engine.begin() as conn:
         existing = await conn.run_sync(_existing)
 
+        # 标识符引号必须按方言来：MySQL 只认反引号，双引号会被当成字符串字面量
+        # 从而报 1064 语法错误（此前用双引号，导致 MySQL 上补列**静默失败**）。
+        quote = "`" if engine.dialect.name == "mysql" else '"'
+
         for table in metadata.sorted_tables:
             if table.name not in existing:
                 continue  # 新表交给 create_all
@@ -155,7 +159,10 @@ async def _ensure_columns() -> None:
                 if column.name in present:
                     continue
                 ddl_type = column.type.compile(dialect=engine.dialect)
-                clause = f'ALTER TABLE "{table.name}" ADD COLUMN "{column.name}" {ddl_type}'
+                clause = (
+                    f"ALTER TABLE {quote}{table.name}{quote} "
+                    f"ADD COLUMN {quote}{column.name}{quote} {ddl_type}"
+                )
                 try:
                     await conn.execute(text(clause))
                     logger.info("迁移：为表 %s 补列 %s", table.name, column.name)

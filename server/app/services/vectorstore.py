@@ -210,10 +210,15 @@ def add_chunks(
     document_id: str,
     document_name: str,
     chunks: list[tuple[int, str, int | None]],
+    team_id: str | None = None,
 ) -> int:
     """写入切片。chunks 为 [(ordinal, content, page_label)]。
 
     page_label 是人类可读页码（1 基）；Markdown/Word 无分页概念时传 None。
+
+    owner_id 恒为**操作人（上传者）的用户 id**；团队知识库额外传 team_id。
+    这样检索时既能按人过滤（个人库），也能按团队过滤（团队库），
+    而不会出现「团队库的 owner_id 是团队 id、和用户 id 对不上」的错位。
     """
     if not chunks:
         return 0
@@ -235,6 +240,9 @@ def add_chunks(
         metadatas.append(
             {
                 "owner_id": owner_id,
+                # 团队知识库需带团队 id，供团队内任意成员检索到；
+                # 个人库用空串占位（Chroma 元数据不接受 None）
+                "team_id": team_id or "",
                 "knowledge_base_id": knowledge_base_id,
                 "knowledge_base_name": knowledge_base_name,
                 "document_id": document_id,
@@ -356,16 +364,27 @@ def search(
     top_k: int = 5,
     score_threshold: float = 0.2,
     hybrid: bool | None = None,
+    team_ids: list[str] | None = None,
 ) -> list[RetrievedChunk]:
     """检索相关切片。
 
     实现要点：
-      - owner_id 在**向量库层面**过滤，确保不会跨用户召回（安全边界）；
+      - owner_id / team_ids 在**向量库层面**过滤，确保不会跨用户、跨团队召回
+        （安全边界）。团队知识库的切片带 team_id，只要提问者是该团队成员
+        就应能召回 —— 这正是「团队知识库」的意义；
       - knowledge_base_ids 在候选集上二次过滤（Chroma 的 $in 对动态列表较脆弱）；
       - 混合检索开启时先取较大候选池，再用 0.5×向量 + 0.5×词面 重排。
     """
     use_hybrid = settings.HYBRID_SEARCH if hybrid is None else hybrid
     limit = max(1, top_k)
+
+    # 归属过滤：我的个人库切片 + 我所在团队的团队库切片
+    scope_conditions: list[dict[str, Any]] = [{"owner_id": owner_id}]
+    if team_ids:
+        scope_conditions.append({"team_id": {"$in": list(team_ids)}})
+    where: dict[str, Any] = (
+        scope_conditions[0] if len(scope_conditions) == 1 else {"$or": scope_conditions}
+    )
 
     try:
         collection = get_collection()
@@ -376,14 +395,14 @@ def search(
             result = collection.query(
                 query_embeddings=[query_vector],
                 n_results=n_fetch,
-                where={"owner_id": owner_id},
+                where=where,
                 include=["documents", "metadatas", "distances"],
             )
         else:
             result = collection.query(
                 query_texts=[query_text],
                 n_results=n_fetch,
-                where={"owner_id": owner_id},
+                where=where,
                 include=["documents", "metadatas", "distances"],
             )
     except VectorStoreUnavailable:

@@ -64,6 +64,9 @@ class KnowledgeBase(Base):
     __tablename__ = "knowledge_bases"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    # 归属类型：user（个人库，owner_id=用户）/ team（团队库，owner_id=团队）
+    # 这两种库共用一张表，权限与检索隔离都靠 owner_type + owner_id 判断。
+    owner_type: Mapped[str] = mapped_column(String(16), default="user", index=True)
     owner_id: Mapped[str] = mapped_column(
         String(64), ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
@@ -89,6 +92,9 @@ class Document(Base):
         String(64), ForeignKey("knowledge_bases.id", ondelete="CASCADE"), index=True
     )
     name: Mapped[str] = mapped_column(String(512))
+    # 上传者用户 id。团队知识库的文档由多位成员上传，
+    # 记录上传者才能在重新索引时写入正确的向量归属（见 vectorstore.add_chunks 的 owner_id）。
+    uploaded_by: Mapped[str] = mapped_column(String(64), default="", index=True)
     # 原始文件在磁盘上的相对路径
     stored_path: Mapped[str] = mapped_column(Text, default="")
     size: Mapped[int] = mapped_column(Integer, default=0)
@@ -192,3 +198,117 @@ class MessageSource(Base):
     ordinal: Mapped[int] = mapped_column(Integer, default=0)
 
     message: Mapped[Message] = relationship(back_populates="sources")
+
+
+# ==========================================================================
+# 团队（类群组）
+#
+# 角色模型：
+#   owner  负责人 —— 1 人，可转让；拥有全部权限
+#   admin  管理员 —— 可审批入队、拉人、管理团队知识库、移除普通成员
+#   member 成员   —— 可上传/检索团队知识库，可退队
+#
+# 入队方式：
+#   1) 邀请码（team.invite_code）直接加入或提交申请，取决于 join_policy
+#   2) 搜索团队后提交申请，owner/admin 审批（QQ 群式审核）
+#   3) owner/admin 直接添加成员（免审批）
+# ==========================================================================
+class Team(Base):
+    __tablename__ = "teams"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    # 公开团队可被搜索到；私有团队只能靠邀请码进入
+    visibility: Mapped[str] = mapped_column(String(16), default="public", index=True)
+    # 入队策略：open=邀请码直接进；approval=需 owner/admin 审核；closed=禁止申请
+    join_policy: Mapped[str] = mapped_column(String(16), default="approval")
+    invite_code: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    owner_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=now_utc, onupdate=now_utc
+    )
+
+    members: Mapped[list["TeamMember"]] = relationship(
+        back_populates="team", cascade="all, delete-orphan"
+    )
+
+
+class TeamMember(Base):
+    __tablename__ = "team_members"
+    __table_args__ = (UniqueConstraint("team_id", "user_id", name="uq_team_member"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    team_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("teams.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    role: Mapped[str] = mapped_column(String(16), default="member", index=True)
+    joined_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+
+    team: Mapped[Team] = relationship(back_populates="members")
+
+
+class TeamJoinRequest(Base):
+    """入队申请（待 owner/admin 审批）。"""
+
+    __tablename__ = "team_join_requests"
+    __table_args__ = (
+        UniqueConstraint("team_id", "user_id", "status", name="uq_join_request"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    team_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("teams.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    # 申请人留言（可选，便于管理员判断）
+    message: Mapped[str] = mapped_column(String(255), default="")
+    # 来源：search（搜索申请）/ invite_code（邀请码申请）
+    source: Mapped[str] = mapped_column(String(16), default="search")
+    # pending / approved / rejected
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    handled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    handled_by: Mapped[str] = mapped_column(String(64), default="")
+
+
+class ApiKey(Base):
+    """第三方 API 密钥（加密存储）。
+
+    scope_type / scope_id 决定归属：
+      user + 用户 id  —— 个人密钥，只对自己的**个人知识库**生效
+      team + 团队 id  —— 团队密钥，对**团队知识库**生效（费用由团队承担）
+
+    解析优先级见 app/services/keyring.py：
+      知识库归属方自己的 Key  →  服务端 .env 里的全局 Key（兜底）
+    """
+
+    __tablename__ = "api_keys"
+    __table_args__ = (
+        UniqueConstraint("scope_type", "scope_id", "provider", name="uq_api_key_scope"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    scope_type: Mapped[str] = mapped_column(String(16), index=True)  # user / team
+    scope_id: Mapped[str] = mapped_column(String(64), index=True)
+    # zhipu（向量化）/ deepseek 等（生成）
+    provider: Mapped[str] = mapped_column(String(32), index=True)
+    label: Mapped[str] = mapped_column(String(64), default="")
+    # Fernet 密文，绝不明文落库；对前端只回掩码
+    secret: Mapped[str] = mapped_column(Text, default="")
+    # 生成类密钥可指定模型与 base_url（留空则用 provider 默认值）
+    model: Mapped[str] = mapped_column(String(128), default="")
+    base_url: Mapped[str] = mapped_column(String(255), default="")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=now_utc, onupdate=now_utc
+    )
