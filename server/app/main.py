@@ -17,7 +17,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.api import auth, chat, conversations, documents, health, knowledge_bases
+from app.api import (
+    auth,
+    chat,
+    conversations,
+    documents,
+    health,
+    keys,
+    knowledge_bases,
+    teams,
+)
 from app.core.config import settings
 from app.core.database import init_db
 
@@ -114,6 +123,10 @@ for router in (
     knowledge_bases.router,
     documents.router,
     chat.router,
+    teams.router,
+    keys.router,
+    # 团队密钥挂在 /api/teams/{team_id}/keys 下
+    keys.team_router,
 ):
     app.include_router(router, prefix=settings.API_PREFIX)
 
