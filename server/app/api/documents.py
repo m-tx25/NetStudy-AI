@@ -19,7 +19,7 @@ from app.api.serializers import document_out
 from app.core.config import settings
 from app.models import Document, KnowledgeBase, now_utc
 from app.schemas import DocumentOut, DocumentUpdateIn, OkOut
-from app.services import access, chunking, parser, vectorstore
+from app.services import access, chunking, keyring, parser, vectorstore
 from app.tasks import dispatch_process_document
 from app.utils.ids import new_id
 
@@ -238,6 +238,13 @@ async def _reindex_vectors(db: DbSession, document: Document) -> None:
                     int(page) if isinstance(page, (int, float)) and page else None,
                 )
             )
+        # 向量化用谁的 Key：团队库用团队 Key → 个人库用上传者 Key → 服务端 Key
+        _team_id = base.owner_id if (base.owner_type or "user") == "team" else None
+        _resolved = await keyring.resolve_embedding_key(
+            db,
+            team_id=_team_id,
+            user_id=None if _team_id else (document.uploaded_by or user.id),
+        )
         # 向量归属：owner_id 用上传者，团队库额外带 team_id（见 pipeline.py 说明）
         stored = await asyncio.to_thread(
             vectorstore.add_chunks,
@@ -247,9 +254,8 @@ async def _reindex_vectors(db: DbSession, document: Document) -> None:
             document_id=document.id,
             document_name=document.name,
             chunks=payload,
-            team_id=(
-                base.owner_id if (base.owner_type or "user") == "team" else None
-            ),
+            team_id=_team_id,
+            embedding_api_key=_resolved.secret,
         )
         document.chunks = stored
     except Exception as exc:

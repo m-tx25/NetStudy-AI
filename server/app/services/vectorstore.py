@@ -41,9 +41,15 @@ class VectorStoreUnavailable(RuntimeError):
 _client = None
 
 
-def collection_name() -> str:
-    """按向量化模式区分集合，避免两种向量空间混入同一集合。"""
-    suffix = "zhipu2048" if embeddings.is_zhipu_configured() else "default"
+def collection_name(api_key: str | None = None) -> str:
+    """按向量化模式区分集合，避免两种向量空间混入同一集合。
+
+    「是否智谱模式」不只取决于服务端配置 —— 团队/用户自备智谱 Key 时同样是智谱模式
+    （同一 embedding-3 模型，向量空间一致，可共用集合）。
+    只有真正没有可用 Key、退回 Chroma 默认 ONNX 模型时才用另一个集合。
+    """
+    configured = embeddings.is_zhipu_configured() or bool((api_key or "").strip())
+    suffix = "zhipu2048" if configured else "default"
     return f"{settings.CHROMA_COLLECTION}_{suffix}"
 
 
@@ -211,6 +217,7 @@ def add_chunks(
     document_name: str,
     chunks: list[tuple[int, str, int | None]],
     team_id: str | None = None,
+    embedding_api_key: str = "",
 ) -> int:
     """写入切片。chunks 为 [(ordinal, content, page_label)]。
 
@@ -259,7 +266,7 @@ def add_chunks(
     # 分批写入，避免单次请求过大（智谱 embedding 单次最多 64 条）
     batch = 32
     written = 0
-    embedder = embeddings.get_embeddings()  # 智谱时为 LangChain Embeddings；未配置时为 None
+    embedder = embeddings.get_embeddings(embedding_api_key or None)
 
     for start in range(0, len(ids), batch):
         end = start + batch
@@ -365,6 +372,7 @@ def search(
     score_threshold: float = 0.2,
     hybrid: bool | None = None,
     team_ids: list[str] | None = None,
+    embedding_api_key: str = "",
 ) -> list[RetrievedChunk]:
     """检索相关切片。
 
@@ -390,8 +398,11 @@ def search(
         collection = get_collection()
         n_fetch = max(limit, HYBRID_POOL) if use_hybrid else limit
 
-        if embeddings.is_zhipu_configured():
-            query_vector = embeddings.get_embeddings().embed_query(query_text)
+        has_key = embeddings.is_zhipu_configured() or bool((embedding_api_key or "").strip())
+        if has_key:
+            query_vector = embeddings.get_embeddings(embedding_api_key or None).embed_query(
+                query_text
+            )
             result = collection.query(
                 query_embeddings=[query_vector],
                 n_results=n_fetch,
