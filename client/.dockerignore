@@ -1,0 +1,23 @@
+# 构建上下文是 client/ 目录。
+# 排除依赖与产物，减小上下文体积、加快构建。
+
+# 依赖（镜像里由 npm ci 现装）
+node_modules/
+.npm-cache/
+
+# 构建产物（镜像里由 vite build 现生成）
+dist/
+
+# 本地开发环境文件；构建实际用的是 .env.production（**不要**排除它）
+.env.development
+.env.local
+
+# 截图与辅助脚本，构建用不到
+docs/
+scripts/
+
+# 编辑器与系统文件
+.vscode/
+.idea/
+.DS_Store
+*.log
