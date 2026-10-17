@@ -359,8 +359,23 @@ async def stream_answer(
                     ),
                 }
         except llm.LLMError as exc:
-            failed = True
-            yield {"type": "error", "message": str(exc)}
+            # 模型「配了但调不通」（Key 无效、余额不足、网络失败、模型名写错）。
+            # 同样不让演示断掉：有依据时降级为摘录，并说明原因；
+            # 无依据则只能如实报错（没有可展示的内容）。
+            if grounded:
+                extractive = True
+                note = (
+                    "> ⚠️ **大模型调用失败**："
+                    f"{str(exc)[:200]}\n"
+                    "> 以下改为直接从知识库摘录原文。请检查 API Key / 模型名 / 网络后重试。\n\n"
+                )
+                text = note + _extractive_answer(question, evidence)
+                for piece in _chunk_text_for_stream(text):
+                    collected.append(piece)
+                    yield {"type": "delta", "content": piece}
+            else:
+                failed = True
+                yield {"type": "error", "message": str(exc)}
         except Exception as exc:  # 兜底，避免流中断后连接悬挂
             failed = True
             yield {"type": "error", "message": f"生成回答时出错：{exc}"}
