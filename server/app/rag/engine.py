@@ -21,7 +21,7 @@ from collections.abc import AsyncGenerator
 from dataclasses import replace
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -83,6 +83,47 @@ def _pick_evidence(chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
         for chunk in chunks
         if chunk.is_evidence(settings.RAG_MIN_LEXICAL_SCORE, settings.RAG_STRONG_SCORE)
     ]
+
+
+def _extractive_answer(question: str, evidence: list[RetrievedChunk]) -> str:
+    """未配置大模型时的抽取式回答：直接摘录检索到的片段。
+
+    为什么需要它：评委/首次运行者通常没有 API Key。若直接报错，
+    整个问答演示就断了。这里退化为「把命中的原文整理出来」——
+    虽然不如模型生成自然，但**内容真实来自文档**，配合引用溯源仍是有意义的演示。
+
+    明确标注，避免用户误以为这是模型生成的答案。
+    """
+    banner = (
+        "> ⚠️ **当前离线演示模式**：未配置大模型 API Key，以下内容为"
+        "**直接从知识库摘录的原文片段**（未经模型组织语言）。\n"
+        "> 配置 `LLM_API_KEY`（或在前端「API 密钥」页填写）后即可获得流畅的生成式回答。\n\n"
+    )
+    if not evidence:
+        return banner + "未检索到可摘录的内容。"
+
+    lines = [banner]
+    for index, chunk in enumerate(evidence[:3], 1):
+        snippet = (chunk.content or "").strip()
+        if len(snippet) > 320:
+            cut = snippet[:320]
+            for mark in ("。", "！", "？", "\n", "；"):
+                pos = cut.rfind(mark)
+                if pos > 80:
+                    cut = cut[: pos + 1]
+                    break
+            snippet = cut + "…"
+        source = chunk.document_name or "未知文档"
+        if getattr(chunk, "page", None):
+            source += f" 第 {chunk.page} 页"
+        lines.append(f"**{index}. 摘自《{source}》**\n\n{snippet}\n")
+    return "\n".join(lines)
+
+
+def _chunk_text_for_stream(text: str, size: int = 12):
+    """把整段文本切块 yield，模拟流式输出（前端打字机效果依赖增量）。"""
+    for start in range(0, len(text), size):
+        yield text[start : start + size]
 
 
 async def stream_answer(
@@ -275,6 +316,8 @@ async def stream_answer(
     collected: list[str] = []
     usage: dict[str, int] = {}
     failed = False
+    # 未配置大模型时是否走了「抽取式兜底」
+    extractive = False
 
     if grounded or use_fallback:
         # 有依据 → 严格 RAG（只喂构成依据的片段）；无依据但允许回退 → 用模型自身知识
@@ -296,9 +339,25 @@ async def stream_answer(
             ):
                 collected.append(piece)
                 yield {"type": "delta", "content": piece}
-        except llm.LLMNotConfigured as exc:
-            failed = True
-            yield {"type": "error", "message": str(exc)}
+        except llm.LLMNotConfigured:
+            # 没配 LLM Key：不让演示断掉。
+            # 有依据时用「抽取式回答」——直接把检索到的片段整理成答案，
+            # 并明确标注这是摘录而非模型生成，既保证可演示，也不误导用户。
+            if grounded:
+                extractive = True
+                text = _extractive_answer(question, evidence)
+                for piece in _chunk_text_for_stream(text):
+                    collected.append(piece)
+                    yield {"type": "delta", "content": piece}
+            else:
+                failed = True
+                yield {
+                    "type": "error",
+                    "message": (
+                        "未配置大模型，且知识库中没有检索到可摘录的内容。"
+                        "请在「账号设置 → API 密钥」或 server/.env 里配置 LLM_API_KEY 后再试。"
+                    ),
+                }
         except llm.LLMError as exc:
             failed = True
             yield {"type": "error", "message": str(exc)}
@@ -354,6 +413,8 @@ async def stream_answer(
         "grounded": grounded,
         "model": selected_model.model,
         "modelLabel": selected_model.label,
+        # true 表示未配置大模型，正文是知识库原文摘录（非模型生成）
+        "extractive": extractive,
     }
 
 

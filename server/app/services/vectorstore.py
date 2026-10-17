@@ -8,8 +8,9 @@
   3. 文档停用/删除时同步从向量库移除，避免检索到已失效内容。
 
 与 rag 脚本的差异（有意为之）：
-  - 集合名带后缀区分向量空间：智谱 embedding-3 与 Chroma 默认 ONNX 模型的向量
-    **不可混用**，Chroma 在集合创建时就固定了维度，混用会直接报维度错误。
+  - 集合名带后缀区分向量空间：智谱 embedding-3（2048 维）与内置离线哈希
+    （512 维）的向量**不可混用**，Chroma 在集合创建时就固定了维度，
+    混用会直接报维度错误。
   - 距离转相似度：Chroma 默认 L2 距离，做 1 - d/2 归一化到 0~1，
     以便前端按百分比展示（前端对 0~1 与 0~100 都能识别）。
 """
@@ -46,10 +47,13 @@ def collection_name(api_key: str | None = None) -> str:
 
     「是否智谱模式」不只取决于服务端配置 —— 团队/用户自备智谱 Key 时同样是智谱模式
     （同一 embedding-3 模型，向量空间一致，可共用集合）。
-    只有真正没有可用 Key、退回 Chroma 默认 ONNX 模型时才用另一个集合。
+    没有任何 Key 时用**内置离线向量化**，维度与语义空间都不同，必须独立集合。
     """
     configured = embeddings.is_zhipu_configured() or bool((api_key or "").strip())
-    suffix = "zhipu2048" if configured else "default"
+    if configured:
+        suffix = "zhipu2048"
+    else:
+        suffix = f"offline{embeddings.offline_dimensions()}"
     return f"{settings.CHROMA_COLLECTION}_{suffix}"
 
 
@@ -91,10 +95,10 @@ def get_collection():
         'ZhipuAIEmbeddings' object has no attribute 'name'
 
     因此统一改为**调用方自己算向量再显式传入**（与 search() 的写法一致）：
-      - `upsert(..., embeddings=[...])`  ← 见 upsert_document
+      - `upsert(..., embeddings=[...])`  ← 见 add_chunks
       - `query(query_embeddings=[...])`  ← 见 search
-    需要 Chroma 默认嵌入（未配置智谱 Key 时）的场景，则传 `query_texts` / 不传
-    embeddings，让 Chroma 用内置 ONNX 模型自行处理。
+    两种模式（智谱 / 内置离线）都实现了 `embed_documents` 与 `embed_query`，
+    所以调用方总能拿到向量，不会退回到 Chroma 的 ONNX 模型。
     """
     client = get_client()
     kwargs: dict[str, Any] = {
@@ -275,11 +279,12 @@ def add_chunks(
             "documents": documents[start:end],
             "metadatas": metadatas[start:end],
         }
-        # 智谱模式：自己算向量后显式传入（不依赖集合上的 embedding_function，
-        # 原生 chromadb 与 LangChain 的 Embeddings 接口并不兼容，见 get_collection 注释）
+        # 自己算向量后显式传入。
+        # 不能依赖集合上的 embedding_function：原生 chromadb 与 LangChain 的
+        # Embeddings 接口并不兼容（见 get_collection 注释）。
+        # 离线模式下 embedder 同样是可用实例，所以这里恒有向量。
         if embedder is not None:
             payload["embeddings"] = embedder.embed_documents(documents[start:end])
-        # 未配置智谱 Key 时不传 embeddings，交给 Chroma 内置 ONNX 模型
         collection.upsert(**payload)
         written += len(ids[start:end])
 
@@ -397,25 +402,18 @@ def search(
     try:
         collection = get_collection()
         n_fetch = max(limit, HYBRID_POOL) if use_hybrid else limit
-
-        has_key = embeddings.is_zhipu_configured() or bool((embedding_api_key or "").strip())
-        if has_key:
-            query_vector = embeddings.get_embeddings(embedding_api_key or None).embed_query(
-                query_text
-            )
-            result = collection.query(
-                query_embeddings=[query_vector],
-                n_results=n_fetch,
-                where=where,
-                include=["documents", "metadatas", "distances"],
-            )
-        else:
-            result = collection.query(
-                query_texts=[query_text],
-                n_results=n_fetch,
-                where=where,
-                include=["documents", "metadatas", "distances"],
-            )
+        # 统一走「自己算查询向量」：离线实现与智谱实现都实现了 embed_query，
+        # 不再需要 query_texts 分支（那会依赖集合上的 embedding_function，
+        # 从而触发 Chroma 内置 ONNX 模型的 79MB 下载）。
+        query_vector = embeddings.get_embeddings(embedding_api_key or None).embed_query(
+            query_text
+        )
+        result = collection.query(
+            query_embeddings=[query_vector],
+            n_results=n_fetch,
+            where=where,
+            include=["documents", "metadatas", "distances"],
+        )
     except VectorStoreUnavailable:
         raise
     except Exception as exc:
