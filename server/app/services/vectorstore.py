@@ -42,12 +42,26 @@ class VectorStoreUnavailable(RuntimeError):
 _client = None
 
 
+def _vector_space_suffixes() -> list[str]:
+    """所有可能的向量空间后缀。
+
+    用于「不知道该用哪个空间」的场景（删除、统计）：
+    同一份数据可能存在于 zhipu2048（配了 Key）或 offline512（没配 Key）里，
+    两种空间不可混用，所以这些操作要**遍历所有空间**才不会漏。
+    """
+    return ["zhipu2048", f"offline{embeddings.offline_dimensions()}"]
+
+
 def collection_name(api_key: str | None = None) -> str:
     """按向量化模式区分集合，避免两种向量空间混入同一集合。
 
     「是否智谱模式」不只取决于服务端配置 —— 团队/用户自备智谱 Key 时同样是智谱模式
     （同一 embedding-3 模型，向量空间一致，可共用集合）。
     没有任何 Key 时用**内置离线向量化**，维度与语义空间都不同，必须独立集合。
+
+    因此调用方**必须**把本次实际使用的 embedding key 传进来
+    （add_chunks / search 都传了 embedding_api_key），否则会出现
+    「用 2048 维向量写进 512 维集合」的维度错误。
     """
     configured = embeddings.is_zhipu_configured() or bool((api_key or "").strip())
     if configured:
@@ -66,6 +80,16 @@ def _persist_dir() -> Path:
 
 
 def get_client():
+    """获取 ChromaDB 客户端。
+
+    两种形态，由 settings.CHROMA_HOST 决定：
+      - 为空：嵌入式 PersistentClient，数据落在 CHROMA_PERSIST_DIR（本地开发）
+      - 非空：HttpClient 连接独立的 Chroma 服务（Docker 部署，
+              数据库容器化、数据由该容器持久化，后端镜像本身无状态）
+
+    Docker 部署时用 HttpClient 还有一个好处：不需要 ~/.cache/chroma 可写，
+    也不存在内置 ONNX 模型下载的问题（向量一律由我们自己算好传入）。
+    """
     global _client
     if _client is not None:
         return _client
@@ -76,18 +100,37 @@ def get_client():
             "未安装 chromadb，请执行 pip install -r requirements.txt"
         ) from exc
 
+    host = (settings.CHROMA_HOST or "").strip()
+    if host:
+        try:
+            _client = chromadb.HttpClient(host=host, port=settings.CHROMA_PORT)
+            logger.info("向量库：连接 Chroma 服务 %s:%s", host, settings.CHROMA_PORT)
+        except Exception as exc:
+            raise VectorStoreUnavailable(
+                f"连接 Chroma 服务失败（{host}:{settings.CHROMA_PORT}）：{exc}\n"
+                "        请确认 chroma 容器已启动且端口可达"
+            ) from exc
+        return _client
+
     try:
         _client = chromadb.PersistentClient(path=str(_persist_dir()))
+        logger.info("向量库：嵌入式模式，数据目录 %s", _persist_dir())
     except Exception as exc:  # 目录不可写、版本不兼容等
         raise VectorStoreUnavailable(f"初始化 ChromaDB 失败：{exc}") from exc
     return _client
 
 
-def get_collection():
+def get_collection(api_key: str | None = None):
     """获取（必要时创建）集合。
 
+    参数 api_key 是**本次实际使用的 embedding key**，用于决定集合的向量空间：
+      - 服务端配了 Key，或传入了团队/用户自备 Key → zhipu2048（2048 维）
+      - 两者都没有 → offline512（512 维，内置离线实现）
+    不传就按服务端配置判断，**因此凡是「用户可能自备 Key」的路径都必须传**，
+    否则会出现「用 2048 维向量写进 512 维集合」的维度错误。
+
     注意：这里**不传 embedding_function**。
-    本模块用的是原生 `chromadb.PersistentClient`，而 chromadb 1.5.x 要求
+    本模块用的是原生 chromadb 客户端，而 chromadb 1.5.x 要求
     embedding function 实现其自有接口（`name()` / `__call__` / `is_legacy` …）。
     LangChain 的 `ZhipuAIEmbeddings` 只实现了 `embed_query` / `embed_documents`，
     传进来会在集合创建时抛：
@@ -102,7 +145,7 @@ def get_collection():
     """
     client = get_client()
     kwargs: dict[str, Any] = {
-        "name": collection_name(),
+        "name": collection_name(api_key),
         # 显式声明距离度量，便于日后换 cosine 时行为可预期
         "metadata": {"hnsw:space": "l2", "embedding": embeddings.current_mode()},
     }
@@ -111,6 +154,30 @@ def get_collection():
         return client.get_or_create_collection(**kwargs)
     except Exception as exc:
         raise VectorStoreUnavailable(f"打开向量集合失败：{exc}") from exc
+
+
+def _existing_collections() -> list[Any]:
+    """列出当前实际存在、且属于本系统的所有集合（按向量空间后缀）。
+
+    用于删除与统计：调用方不知道该数据当初用的是哪个向量空间，
+    因此需要在所有空间上都操作一遍。
+
+    实现上**不依赖 client.list_collections()**，而是按已知名称逐个探测：
+      - list_collections() 在部分 chromadb 版本/客户端实例上有缓存，
+        会漏掉「进程启动后新建的集合」，导致删除漏数据、统计偏小；
+      - 已知名称只有两个（zhipu2048 / offline512），逐个 get_collection 成本极低。
+    """
+    client = get_client()
+    prefix = settings.CHROMA_COLLECTION
+    result = []
+    for suffix in _vector_space_suffixes():
+        name = f"{prefix}_{suffix}"
+        try:
+            result.append(client.get_collection(name))
+        except Exception:
+            # 集合不存在是常态（只用了其中一种向量空间），不需要告警
+            continue
+    return result
 
 
 # --------------------------------------------------------------------------
@@ -234,7 +301,9 @@ def add_chunks(
     if not chunks:
         return 0
 
-    collection = get_collection()
+    # 集合必须按「本次实际使用的 key」选：用户自备 Key 时是 zhipu2048，
+    # 否则是 offline512。传错会导致向量维度与集合维度不一致。
+    collection = get_collection(embedding_api_key)
 
     ids: list[str] = []
     documents: list[str] = []
@@ -295,16 +364,25 @@ def add_chunks(
 # 删除
 # --------------------------------------------------------------------------
 def _delete_where(where: dict[str, Any]) -> int:
-    collection = get_collection()
-    try:
-        existing = collection.get(where=where, include=[])
-        count = len(existing.get("ids") or [])
-        if count:
-            collection.delete(where=where)
-        return count
-    except Exception as exc:  # 集合为空等
-        logger.warning("删除向量失败 where=%s: %s", where, exc)
+    """在**所有向量空间**上删除匹配的切片。
+
+    调用方（删除文档/知识库/账号）并不知道这些切片当初是用智谱还是离线实现
+    建的，所以两个集合都要清 —— 只删一个会留下查不到的孤儿向量。
+    """
+    removed = 0
+    collections = _existing_collections()
+    if not collections:
         return 0
+    for collection in collections:
+        try:
+            existing = collection.get(where=where, include=[])
+            count = len(existing.get("ids") or [])
+            if count:
+                collection.delete(where=where)
+                removed += count
+        except Exception as exc:  # 集合为空、过滤条件无匹配等
+            logger.warning("删除向量失败 where=%s: %s", where, exc)
+    return removed
 
 
 def delete_document(document_id: str) -> int:
@@ -332,36 +410,44 @@ def count_chunks(*, owner_id: str | None = None, knowledge_base_id: str | None =
     if document_id:
         where["document_id"] = document_id
 
+    # 跨所有向量空间求和：数据可能分布在 zhipu2048 与 offline512 两个集合里
+    total = 0
     try:
-        collection = get_collection()
-        if not where:
-            return int(collection.count())
-        result = collection.get(where=where, include=[])
-        return len(result.get("ids") or [])
+        collections = _existing_collections()
+        if not collections:
+            return 0
+        for collection in collections:
+            if not where:
+                total += int(collection.count())
+            else:
+                result = collection.get(where=where, include=[])
+                total += len(result.get("ids") or [])
+        return total
     except Exception as exc:
         logger.warning("统计向量数量失败：%s", exc)
-        return 0
+        return total
 
 
 def count_by_knowledge_base(knowledge_base_ids: list[str]) -> dict[str, int]:
     """批量统计每个知识库的切片数，避免列表接口 N+1。"""
     if not knowledge_base_ids:
         return {}
+    counts: dict[str, int] = {kb_id: 0 for kb_id in knowledge_base_ids}
     try:
-        collection = get_collection()
-        counts: dict[str, int] = {kb_id: 0 for kb_id in knowledge_base_ids}
-        # Chroma 的 $in 过滤器对空列表不友好，但这里已保证非空
-        result = collection.get(
-            where={"knowledge_base_id": {"$in": list(knowledge_base_ids)}}, include=["metadatas"]
-        )
-        for metadata in result.get("metadatas") or []:
-            kb_id = (metadata or {}).get("knowledge_base_id")
-            if kb_id in counts:
-                counts[kb_id] += 1
+        for collection in _existing_collections():
+            # Chroma 的 $in 过滤器对空列表不友好，但这里已保证非空
+            result = collection.get(
+                where={"knowledge_base_id": {"$in": list(knowledge_base_ids)}},
+                include=["metadatas"],
+            )
+            for metadata in result.get("metadatas") or []:
+                kb_id = (metadata or {}).get("knowledge_base_id")
+                if kb_id in counts:
+                    counts[kb_id] += 1
         return counts
     except Exception as exc:
         logger.warning("按知识库统计向量失败：%s", exc)
-        return {kb_id: 0 for kb_id in knowledge_base_ids}
+        return counts
 
 
 # --------------------------------------------------------------------------
@@ -400,7 +486,8 @@ def search(
     )
 
     try:
-        collection = get_collection()
+        # 集合按本次实际使用的 key 选（用户自备 Key → zhipu2048，否则 offline512）
+        collection = get_collection(embedding_api_key)
         n_fetch = max(limit, HYBRID_POOL) if use_hybrid else limit
         # 统一走「自己算查询向量」：离线实现与智谱实现都实现了 embed_query，
         # 不再需要 query_texts 分支（那会依赖集合上的 embedding_function，
@@ -478,18 +565,32 @@ def search(
     return candidates[:limit]
 
 
+def chroma_target() -> dict[str, Any]:
+    """向量库连接目标（供自检展示，且不会在服务端模式下误建本地目录）。"""
+    host = (settings.CHROMA_HOST or "").strip()
+    if host:
+        return {
+            "mode": "http",
+            "host": host,
+            "port": settings.CHROMA_PORT,
+        }
+    return {"mode": "embedded", "persistDir": str(_persist_dir())}
+
+
 def health() -> dict[str, Any]:
     """向量库自检，供 /api/health 展示。"""
     info: dict[str, Any] = {
         "collection": collection_name(),
-        "persistDir": str(_persist_dir()),
+        "target": chroma_target(),
         "embedding": embeddings.describe(),
         "hybridSearch": settings.HYBRID_SEARCH,
     }
     try:
-        collection = get_collection()
+        # 统计所有向量空间（zhipu2048 + offline512），否则只报其中一个会少算
+        collections = _existing_collections()
         info["available"] = True
-        info["totalChunks"] = int(collection.count())
+        info["collections"] = [getattr(c, "name", "?") for c in collections]
+        info["totalChunks"] = sum(int(c.count()) for c in collections)
     except VectorStoreUnavailable as exc:
         info["available"] = False
         info["error"] = str(exc)
