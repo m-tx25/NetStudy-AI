@@ -1,0 +1,194 @@
+# ============================================================================
+# RAG 知识问答系统 · Docker Compose 部署
+#
+# 服务拓扑：
+#   frontend      Nginx，唯一对外暴露 80，把 /api 反代给 backend
+#   backend       FastAPI，仅内网 8000
+#   celery_worker 复用 backend 镜像，跑 Celery worker（PDF 解析 + 向量化）
+#   redis         Celery 的 broker 与 result backend
+#   mysql         业务数据库（**必需**，见文末说明）
+#
+# 启动：
+#   docker compose up -d --build
+# ============================================================================
+
+name: rag-qa
+
+services:
+  # ------------------------------------------------------------------ MySQL
+  # 这是你的规格里漏掉的第 5 个服务。
+  # 后端启动时会执行 init_db()，连不上 MySQL 会直接抛
+  # 「无法连接 MySQL」并退出 —— 没有它，backend 起不来。
+  mysql:
+    image: mysql:8.4
+    container_name: rag-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-chuangzhibei}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-chuangzhibei}
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+08:00
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      # 用 mysqladmin ping 判断，比 tcp 探测更能反映「真的能连」
+      test:
+        ['CMD-SHELL', 'mysqladmin ping -h 127.0.0.1 -uroot -p"$$MYSQL_ROOT_PASSWORD" --silent']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - ragnet
+
+  # ------------------------------------------------------------------ Redis
+  redis:
+    image: redis:7-alpine
+    container_name: rag-redis
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - ragnet
+
+  # ---------------------------------------------------------------- Backend
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    image: rag-backend:latest
+    container_name: rag-backend
+    restart: unless-stopped
+    # 从 server/.env 读取模型 Key 等配置
+    env_file:
+      - ./server/.env
+    environment:
+      TZ: Asia/Shanghai
+      # ---- 容器内地址覆盖 ----
+      # server/.env 里写的是 127.0.0.1（本地开发用），在容器里必须改成服务名，
+      # 否则会去连自己容器内的 127.0.0.1，必然失败。
+      MYSQL_HOST: mysql
+      MYSQL_PORT: '3306'
+      MYSQL_USER: root
+      # 与 mysql 服务的 MYSQL_ROOT_PASSWORD 保持一致
+      MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD:-chuangzhibei}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-chuangzhibei}
+
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+
+      # 【关键】server/.env 里是 true（进程内处理）。
+      # 既然部署了独立 worker，这里必须改成 false，
+      # 否则任务会在 Web 进程内同步跑，celery_worker 容器形同虚设。
+      CELERY_TASK_ALWAYS_EAGER: 'false'
+
+      # 数据目录（与下面的 volumes 挂载点对齐）
+      UPLOAD_DIR: /app/data/uploads
+      CHROMA_PERSIST_DIR: /app/data/chroma_db
+
+      PORT: '8000'
+      DEBUG: 'false'
+    volumes:
+      # 上传文件 + ChromaDB 向量数据，落到宿主机，重建容器不丢
+      - ./server/data:/app/data
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ragnet
+
+  # ------------------------------------------------------------ Celery worker
+  celery_worker:
+    # 复用 backend 的构建结果，不重复构建
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    image: rag-backend:latest
+    container_name: rag-celery
+    restart: unless-stopped
+    env_file:
+      - ./server/.env
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_HOST: mysql
+      MYSQL_PORT: '3306'
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD:-chuangzhibei}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-chuangzhibei}
+
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+
+      # worker 自己绝不能是 eager，否则不消费队列
+      CELERY_TASK_ALWAYS_EAGER: 'false'
+
+      UPLOAD_DIR: /app/data/uploads
+      CHROMA_PERSIST_DIR: /app/data/chroma_db
+      PORT: '8000'
+      DEBUG: 'false'
+    # 必须挂同一个数据目录：worker 要读上传的原始文件，并把向量写进 Chroma
+    volumes:
+      - ./server/data:/app/data
+    # 覆盖镜像默认的 uvicorn 启动命令。
+    # --concurrency=1：ChromaDB 嵌入式模式底层是 SQLite，同一份数据被
+    # backend 与 worker 两个进程同时写时，多并发容易触发
+    # "database is locked"。单并发最稳；压测后可逐步调大。
+    command:
+      - celery
+      - -A
+      - app.tasks.celery_app
+      - worker
+      - --loglevel=info
+      - --concurrency=1
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    networks:
+      - ragnet
+
+  # --------------------------------------------------------------- Frontend
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    image: rag-frontend:latest
+    container_name: rag-frontend
+    restart: unless-stopped
+    ports:
+      # 只有前端对公网开放；backend / mysql / redis 都不暴露
+      - '80:80'
+    depends_on:
+      backend:
+        condition: service_started
+    networks:
+      - ragnet
+
+# 所有服务都在同一个 bridge 网络里，
+# 因此可以直接用服务名互相访问（backend / mysql / redis / celery_worker）
+networks:
+  ragnet:
+    name: rag-net
+    driver: bridge
+
+volumes:
+  mysql-data:
+    name: rag-mysql-data
+  redis-data:
+    name: rag-redis-data

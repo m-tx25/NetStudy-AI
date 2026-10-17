@@ -1,0 +1,33 @@
+# 构建上下文是 server/ 目录。
+# 没有这个文件时，docker build 会把 .venv（含 Windows 的 .exe）、data/、.env
+# 全部上传给 Docker daemon：既拖慢构建，也可能把密钥打进镜像层。
+
+# 虚拟环境（Linux 镜像里没用，且体积大）
+.venv/
+venv/
+
+# 运行时数据：数据库、上传文件、向量库
+data/
+
+# 密钥：绝不能进镜像，由 docker-compose 的 env_file 在运行时注入
+.env
+.env.*
+!.env.example
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 测试与临时脚本
+tests/
+_*.log
+_*.py
+
+# 文档与版本控制
+*.md
+.git/
+.gitignore
