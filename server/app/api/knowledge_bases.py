@@ -8,9 +8,10 @@
 
 import asyncio
 import logging
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, status
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import func, or_, select
 
 from app.api.deps import CurrentUser, DbSession
 from app.api.serializers import knowledge_base_out
@@ -198,6 +199,18 @@ async def delete_knowledge_base(
 ) -> OkOut:
     base = await _get_owned(db, knowledge_base_id, user.id)
 
+    # 先把物理文件路径取出来：删库之后 documents 记录就查不到了
+    stored_paths = [
+        row
+        for row in (
+            await db.execute(
+                select(Document.stored_path).where(
+                    Document.knowledge_base_id == knowledge_base_id
+                )
+            )
+        ).scalars().all()
+    ]
+
     # 文档与切片由 cascade 删除；会话里的引用需要显式摘除，
     # 否则该会话会一直指向一个已不存在的知识库。
     links = (
@@ -213,9 +226,24 @@ async def delete_knowledge_base(
     await db.delete(base)
     await db.flush()
 
-    # 向量单独存放于 ChromaDB，必须显式清理，否则会留下检索不到的孤儿数据
-    removed = vectorstore.delete_knowledge_base(knowledge_base_id)
+    # 向量单独存放于 ChromaDB，必须显式清理，否则会留下检索不到的孤儿数据。
+    # 这是同步阻塞调用（Chroma 读写），丢线程池避免冻住事件循环。
+    removed = await asyncio.to_thread(
+        vectorstore.delete_knowledge_base, knowledge_base_id
+    )
     if removed:
         logger.info("已清理知识库 %s 的向量 %s 条", knowledge_base_id, removed)
+
+    # 删库时一并删掉磁盘上的原始文件，避免留下永远访问不到的垃圾
+    for path in stored_paths:
+        if not path:
+            continue
+        try:
+            target = Path(path)
+            if not target.is_absolute():
+                target = Path.cwd() / target
+            target.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning("删除知识库 %s 的文件失败 %s：%s", knowledge_base_id, path, exc)
 
     return OkOut(ok=True)

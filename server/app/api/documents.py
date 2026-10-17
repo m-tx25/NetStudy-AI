@@ -27,6 +27,15 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
+# 白名单与 services/parser.py 的 _BUILTIN 分发键保持严格一致，
+# 否则会出现「上传成功、解析阶段才报不支持」的错位体验。
+# 另：.doc 虽在分发表里，但解析器会明确提示「请另存为 .docx」，
+# 这里仍放行以便给出那条更具体的提示。
+ALLOWED_EXTENSIONS = {
+    ".pdf", ".docx", ".doc", ".md", ".markdown", ".txt",
+    ".csv", ".json", ".html", ".htm", ".pptx", ".xlsx", ".xls",
+}
+
 CHUNK_SIZE = 1024 * 1024  # 1MB
 
 
@@ -109,6 +118,19 @@ async def upload_document(
     if not filename:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="未获取到文件名")
 
+    # 扩展名白名单：只接受解析器真正支持的格式。
+    # 不加白名单的话，任意文件（如 .exe）都会被落盘再在解析阶段失败，
+    # 既浪费磁盘又给出难以理解的报错。
+    suffix = Path(filename).suffix.lower()
+    if suffix not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"不支持的文件类型「{suffix or '无扩展名'}」。"
+                f"支持：{', '.join(sorted(ALLOWED_EXTENSIONS))}"
+            ),
+        )
+
     # 上传目标知识库：个人库需本人拥有，团队库需本人是团队成员
     # （团队知识库对成员开放上传，这是团队协作的核心诉求）
     base = await access.get_accessible(db, knowledge_base_id, user.id)
@@ -116,7 +138,6 @@ async def upload_document(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="知识库不存在")
 
     document_id = new_id("doc")
-    suffix = Path(filename).suffix.lower()
     target = _uploads_dir() / f"{document_id}{suffix}"
 
     written = 0

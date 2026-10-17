@@ -1,4 +1,4 @@
-# 本机 git 环境适配文件（SteamTools 中间人根证书合并包），不提交
+﻿# 本机 git 环境适配文件（SteamTools 中间人根证书合并包），不提交
 .git-trust/
 
 # 依赖
@@ -67,3 +67,8 @@ rag/*.pdf
 
 # pip 遗留的临时目录（含拒绝删除权限项，无法清理，忽略）
 .tmp-pip/
+
+# 本地调试临时文件
+_srv*.log
+_judge_test/
+docs/screenshots/debug/

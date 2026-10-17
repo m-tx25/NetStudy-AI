@@ -54,8 +54,9 @@ async def _process(document_id: str, reindex: bool) -> dict[str, Any]:
         )
         embedding_key = resolved.secret
 
-        # 重新处理前先清掉旧向量，避免重复累积
-        removed = vectorstore.delete_document(document.id)
+        # 重新处理前先清掉旧向量，避免重复累积。
+        # 同步阻塞（Chroma），丢线程池避免冻住事件循环。
+        removed = await asyncio.to_thread(vectorstore.delete_document, document.id)
         if removed:
             logger.info("重新索引前清理旧向量 %s 条（doc=%s）", removed, document.id)
 
@@ -147,7 +148,7 @@ async def _process(document_id: str, reindex: bool) -> dict[str, Any]:
                 document.updated_at = now_utc()
                 await db.commit()
             # 失败时清掉可能已写入一半的向量，保证「非 ready 的文档不参与检索」
-            vectorstore.delete_document(document_id)
+            await asyncio.to_thread(vectorstore.delete_document, document_id)
             logger.warning("文档处理失败 id=%s: %s", document_id, message)
             return {"ok": False, "documentId": document_id, "error": message}
 
@@ -185,7 +186,7 @@ async def _mark_failed(document_id: str, error: str) -> None:
             document.error = error[:500]
             document.updated_at = now_utc()
             await db.commit()
-    vectorstore.delete_document(document_id)
+    await asyncio.to_thread(vectorstore.delete_document, document_id)
 
 
 def mark_failed_sync(document_id: str, error: str) -> None:
