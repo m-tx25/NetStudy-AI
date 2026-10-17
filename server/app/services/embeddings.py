@@ -173,8 +173,12 @@ def get_embeddings(api_key: str | None = None):
     try:
         from langchain_community.embeddings import ZhipuAIEmbeddings
 
-        # LangChain 内部通过该环境变量取 key，这里显式写回，避免两处不一致
-        os.environ["ZHIPUAI_API_KEY"] = key
+        # **不要**把 key 写进 os.environ。
+        # ZhipuAIEmbeddings 的 api_key 是显式参数（源码：`api_key: str`，
+        # 仅在未传入时才回落到环境变量），我们每次都显式传了。
+        # 曾经写过 os.environ["ZHIPUAI_API_KEY"] = key，后果很严重：
+        # 进程内只要有一个人用自己的 Key，之后所有「没配 Key」的用户都会
+        # 被 resolver 读到这个环境变量，从而**花别人的钱**（实测踩到）。
         instance = ZhipuAIEmbeddings(
             model=settings.ZHIPUAI_EMBEDDING_MODEL,
             api_key=key,
