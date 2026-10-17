@@ -59,6 +59,20 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 天
 
+    @property
+    def using_default_secret(self) -> bool:
+        """是否仍在使用仓库内置的开发用 SECRET_KEY。
+
+        这不是「能不能跑」的问题，而是**安全**问题：
+          - 内置值在仓库里公开，任何人都能伪造 JWT（绕过登录）；
+          - API 密钥的加密密钥也由它派生，等于所有人用同一把钥匙。
+        启动时会据此告警，提示尽快替换。
+        """
+        return self.SECRET_KEY.strip() in (
+            "",
+            "dev-only-secret-change-me-in-production",
+        )
+
     # ---------------- 上传 ----------------
     # 与前端 client/src/config/index.js 的 UPLOAD_LIMITS.maxSizeMB 保持一致
     MAX_UPLOAD_SIZE_MB: int = 50

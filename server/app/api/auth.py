@@ -158,9 +158,15 @@ async def change_password(
 
 @router.post("/forgot-password", response_model=OkOut)
 async def forgot_password(payload: ForgotPasswordIn) -> OkOut:
-    """发送重置邮件。
+    """发送重置邮件（**当前为桩实现**）。
 
     无论账号是否存在都返回成功，避免暴露注册状态（与前端提示一致）。
-    接入真实邮件服务时在此处投递，并写入一次性重置令牌。
+
+    ⚠️ 现状：**不会真的发邮件，也不会重置密码**。接入真实邮件服务时，
+    需要在这里：
+      1) 生成一次性、带过期时间的重置令牌并落库；
+      2) 通过 SMTP / 邮件服务商投递带令牌的链接；
+      3) 新增「凭令牌设置新密码」的接口，并在使用后作废令牌。
+    在此之前，前端应把该入口标注为「暂未开放」，或改为提示联系管理员重置。
     """
     return OkOut(ok=True)

@@ -14,6 +14,16 @@ export const EDGE_CANDIDATES = [
 
 export { delay }
 
+/** 从 CDP 的 exceptionDetails 中提取可读错误（text 常只是一句 "Uncaught"）。 */
+function _describe(details) {
+  const desc =
+    details?.exception?.description ||
+    details?.exception?.value ||
+    details?.text ||
+    '未知错误'
+  return String(desc).split('\n')[0]
+}
+
 export async function getJson(url, attempts = 40) {
   for (let i = 0; i < attempts; i += 1) {
     try {
@@ -63,14 +73,28 @@ export class Cdp {
     this.listeners.push(fn)
   }
 
+  /**
+   * 按「表达式」求值：expression 必须本身是个值（如 `document.title`）。
+   * 不能写 `return xxx` —— 那会报 Illegal return statement。
+   */
   async evaluate(expression) {
     const result = await this.send('Runtime.evaluate', {
       expression,
       returnByValue: true,
       awaitPromise: true,
     })
-    if (result.exceptionDetails) throw new Error(`evaluate failed: ${result.exceptionDetails.text}`)
+    if (result.exceptionDetails) {
+      throw new Error(`evaluate failed: ${_describe(result.exceptionDetails)}`)
+    }
     return result.result.value
+  }
+
+  /**
+   * 按「语句」求值：内部自动包一层 IIFE，因此可以写 `return xxx;`
+   * 以及多行语句。日常取值用它更顺手。
+   */
+  async evalStmt(code) {
+    return this.evaluate(`(() => { ${code} })()`)
   }
 
   waitForEvent(method, timeoutMs = 30000) {

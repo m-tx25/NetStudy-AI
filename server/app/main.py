@@ -39,6 +39,14 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 安全提醒：默认 SECRET_KEY 既是 JWT 签名密钥，也是 API 密钥的加密根
+    if settings.using_default_secret:
+        logger.warning(
+            "⚠️ 正在使用仓库内置的默认 SECRET_KEY —— 仅适合本地开发。"
+            "该值公开在仓库中，任何人可据此伪造登录令牌，也能解开已存的 API 密钥。"
+            "部署前请在 server/.env 设置 SECRET_KEY（生成：openssl rand -hex 32）。"
+        )
+
     # 建表 + 写入演示数据（已存在则跳过）
     await init_db()
     try:

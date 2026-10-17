@@ -23,9 +23,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import secrets
 import string
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import delete, func, or_, select
@@ -40,6 +42,7 @@ from app.models import (
     User,
     now_utc,
 )
+from app.services import vectorstore
 from app.schemas import (
     OkOut,
     TeamCreateIn,
@@ -340,11 +343,10 @@ async def update_team(
 
 @router.delete("/{team_id}", response_model=OkOut)
 async def delete_team(team_id: str, user: CurrentUser, db: DbSession) -> OkOut:
-    """解散团队（仅 owner）。会连带删除团队知识库、文档与向量。"""
+    """解散团队（仅 owner）。会连带删除团队知识库、文档与**向量**。"""
     await _require_owner(db, team_id, user)
     team = (await db.execute(select(Team).where(Team.id == team_id))).scalar_one()
 
-    # 团队知识库下的文档一并清理（向量由调用方或后续清理任务处理）
     kb_ids = [
         row
         for row in (
@@ -355,13 +357,50 @@ async def delete_team(team_id: str, user: CurrentUser, db: DbSession) -> OkOut:
             )
         ).scalars().all()
     ]
+
+    # 物理文件也要删，否则会一直占着磁盘
+    stored_paths = [
+        row
+        for row in (
+            await db.execute(
+                select(Document.stored_path).where(Document.knowledge_base_id.in_(kb_ids))
+            )
+        ).scalars().all()
+    ] if kb_ids else []
+
     if kb_ids:
         await db.execute(delete(Document).where(Document.knowledge_base_id.in_(kb_ids)))
         await db.execute(delete(KnowledgeBase).where(KnowledgeBase.id.in_(kb_ids)))
 
     await db.delete(team)
     await db.flush()
-    logger.info("团队已解散 id=%s by=%s 连带知识库=%s", team_id, user.id, len(kb_ids))
+
+    # ChromaDB 里的向量独立于 MySQL，必须显式清理，
+    # 否则会留下检索不到的孤儿向量（占用空间，且 team_id 复用时可能串数据）。
+    removed_total = 0
+    for kb_id in kb_ids:
+        try:
+            removed_total += await asyncio.to_thread(
+                vectorstore.delete_knowledge_base, kb_id
+            )
+        except Exception as exc:  # 向量清理失败不应让解散操作整体失败
+            logger.warning("解散团队时清理知识库 %s 向量失败：%s", kb_id, exc)
+
+    for path in stored_paths:
+        if not path:
+            continue
+        try:
+            target = Path(path)
+            if not target.is_absolute():
+                target = Path.cwd() / target
+            target.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning("解散团队时删除文件失败 %s：%s", path, exc)
+
+    logger.info(
+        "团队已解散 id=%s by=%s 连带知识库=%s 向量=%s",
+        team_id, user.id, len(kb_ids), removed_total,
+    )
     return OkOut(ok=True)
 
 
