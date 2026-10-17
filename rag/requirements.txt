@@ -1,0 +1,43 @@
+# RAG 模块依赖（build_db.py / query_db.py）
+#
+# 安装：pip install -r requirements.txt
+#
+# 说明：
+#   1. 下限按**本机实测通过的版本**给出（Python 3.13.11），未锁上限以兼容小版本升级。
+#      如需完全可复现，把 >= 改成 == 精确版本。
+#   2. 本项目确定使用「智谱 embedding-3」做向量化，因此不需要本地模型相关依赖。
+#
+# 本机实测版本（供参考）：
+#   pypdf 6.20.0 / langchain-text-splitters 1.1.3 / langchain-chroma 1.1.0
+#   chromadb 1.5.9 / langchain-community 0.4.2 / langchain-core 1.6.9
+#   zhipuai 2.1.5 / python-dotenv 1.2.2
+
+# ---- 必需：PDF 读取与文本切分 ----
+pypdf>=6.0.0
+langchain-text-splitters>=1.0.0
+
+# ---- 必需：向量库 ----
+langchain-chroma>=1.0.0
+chromadb>=1.0.0
+
+# ---- 必需：LangChain 社区集成 ----
+# 提供 ZhipuAIEmbeddings（建库用）与 PyPDFLoader（PDF 读取）
+# 注意：该包已被官方标记为 sunset，仅作过渡；后续可迁移到独立集成包
+langchain-community>=0.4.0
+langchain-core>=1.0.0
+
+# ---- 必需：智谱 SDK ----
+# LangChain 的 ZhipuAIEmbeddings 内部 import 的是「旧包 zhipuai」，
+# 而不是智谱现在主推的新包 zai-sdk。走 LangChain 就必须装这个。
+zhipuai>=2.1.5
+
+# ---- 建议：从 .env 读取 ZHIPUAI_API_KEY ----
+python-dotenv>=1.0.0
+
+# ============================================================
+# 以下为「改用本地模型」时才需要，当前方案不需要
+# ============================================================
+# sentence-transformers>=3.0.0
+# 用法：python build_db.py --provider local --local-model BAAI/bge-small-zh-v1.5
+# 注意：HuggingFace 直连在国内会 502，需先设置镜像：
+#       $env:HF_ENDPOINT="https://hf-mirror.com"

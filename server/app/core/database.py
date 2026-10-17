@@ -1,0 +1,208 @@
+"""数据库引擎与会话管理（SQLAlchemy 2.x 异步 + MySQL）。
+
+关系型库存放**业务数据**：用户、知识库、文档元信息、会话、消息、引用。
+**向量不在 MySQL 中** —— 它们由 ChromaDB 管理（见 app/services/vectorstore.py），
+两者通过 `knowledge_base_id` / `document_id` 关联。
+
+MySQL 连接串由 config 的 MYSQL_* 拼装，或直接用 DATABASE_URL 覆盖：
+
+    mysql+aiomysql://root:密码@127.0.0.1:3306/chuangzhibei?charset=utf8mb4
+
+驱动选 aiomysql 而非 asyncmy：前者是纯 Python，无需编译，
+在较新的 Python（实测 3.14）上也能直接装上。
+"""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import AsyncGenerator
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase
+
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+class Base(DeclarativeBase):
+    """所有 ORM 模型的基类。"""
+
+
+def _build_engine():
+    dsn = settings.mysql_dsn
+
+    if dsn.startswith("mysql"):
+        return create_async_engine(
+            dsn,
+            echo=settings.DB_ECHO,
+            future=True,
+            pool_pre_ping=True,  # 断线自动重连，避免长时间空闲后第一个请求失败
+            pool_size=settings.DB_POOL_SIZE,
+            max_overflow=settings.DB_MAX_OVERFLOW,
+            pool_recycle=3600,  # MySQL 默认 wait_timeout 8h，提前回收
+        )
+
+    # 非 MySQL：仅用于自动化测试或本地无 MySQL 时的回退
+    if dsn.startswith("sqlite"):
+        logger.warning("当前使用 SQLite（%s）——生产环境请配置 MySQL", dsn)
+        return create_async_engine(
+            dsn,
+            echo=settings.DB_ECHO,
+            future=True,
+            connect_args={"check_same_thread": False},
+        )
+
+    return create_async_engine(dsn, echo=settings.DB_ECHO, future=True)
+
+
+engine = _build_engine()
+
+SessionLocal = async_sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+    autoflush=False,
+)
+
+
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """FastAPI 依赖：每个请求一个会话。"""
+    async with SessionLocal() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+
+
+async def _ensure_database_exists() -> None:
+    """MySQL 下若目标库不存在则自动创建。
+
+    连不上 MySQL 时抛出可读错误 —— 这比让 SQLAlchemy 抛一长串驱动异常友好得多，
+    也是本地最容易卡住的一步（没装 MySQL / 密码不对 / 服务没启动）。
+    """
+    if not settings.is_mysql:
+        return
+
+    try:
+        import aiomysql
+    except ImportError:
+        logger.warning("未安装 aiomysql，跳过库自动创建检查")
+        return
+
+    try:
+        connection = await aiomysql.connect(
+            host=settings.MYSQL_HOST,
+            port=settings.MYSQL_PORT,
+            user=settings.MYSQL_USER,
+            password=settings.MYSQL_PASSWORD,
+            charset="utf8mb4",
+            autocommit=True,
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            "无法连接 MySQL："
+            f"{exc}\n"
+            f"        请确认：1) MySQL 服务已启动；2) {settings.MYSQL_HOST}:{settings.MYSQL_PORT} 可达；"
+            f"3) 用户名/密码正确（当前用户 {settings.MYSQL_USER}）；"
+            f"4) 库 {settings.MYSQL_DATABASE} 可创建。\n"
+            "        配置见 server/.env 的 MYSQL_* 项。"
+        ) from exc
+
+    try:
+        async with connection.cursor() as cursor:
+            await cursor.execute(
+                f"CREATE DATABASE IF NOT EXISTS `{settings.MYSQL_DATABASE}` "
+                "DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+            )
+        logger.info("MySQL 库已就绪：%s", settings.MYSQL_DATABASE)
+    finally:
+        connection.close()
+
+
+async def _ensure_columns() -> None:
+    """给已存在的表补上缺失的列（轻量迁移）。
+
+    背景：`Base.metadata.create_all` 只创建**缺失的表**，不会给已有表新增列。
+    因此给模型加字段后，老数据库会报 `no such column`，必须删库才能恢复 —— 这不可接受。
+    这里在启动时对比模型定义与库中实际结构，自动补列，对 SQLite 与 MySQL 都适用。
+
+    局限：只能补列，不能改类型 / 删列 / 加约束。生产环境仍建议使用 Alembic。
+    """
+    from sqlalchemy import inspect, text
+
+    from app import models  # noqa: F401  确保元数据已加载
+
+    metadata = Base.metadata
+
+    def _existing(sync_conn) -> dict[str, set[str]]:
+        inspector = inspect(sync_conn)
+        return {
+            name: {column["name"] for column in inspector.get_columns(name)}
+            for name in inspector.get_table_names()
+        }
+
+    async with engine.begin() as conn:
+        existing = await conn.run_sync(_existing)
+
+        # 标识符引号必须按方言来：MySQL 只认反引号，双引号会被当成字符串字面量
+        # 从而报 1064 语法错误（此前用双引号，导致 MySQL 上补列**静默失败**）。
+        quote = "`" if engine.dialect.name == "mysql" else '"'
+
+        for table in metadata.sorted_tables:
+            if table.name not in existing:
+                continue  # 新表交给 create_all
+            present = existing[table.name]
+            for column in table.columns:
+                if column.name in present:
+                    continue
+                ddl_type = column.type.compile(dialect=engine.dialect)
+                clause = (
+                    f"ALTER TABLE {quote}{table.name}{quote} "
+                    f"ADD COLUMN {quote}{column.name}{quote} {ddl_type}"
+                )
+                try:
+                    await conn.execute(text(clause))
+                    logger.info("迁移：为表 %s 补列 %s", table.name, column.name)
+                except Exception as exc:
+                    # 多进程同时启动时可能撞车，记录即可
+                    logger.warning("补列失败：%s -> %s", clause, exc)
+
+
+async def init_db() -> None:
+    """建库建表 + 补齐缺失列（开发期用；生产建议改用 Alembic 迁移）。"""
+    # 必须先导入模型，元数据里才会有表定义
+    from app import models  # noqa: F401
+
+    if settings.is_mysql:
+        await _ensure_database_exists()
+
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        # create_all 不会给已有表加列，这里补上
+        await _ensure_columns()
+    except Exception as exc:
+        if settings.ALLOW_SQLITE_FALLBACK:
+            logger.warning("MySQL 初始化失败（%s），回退到 SQLite", exc)
+            raise
+        raise RuntimeError(
+            f"建表失败：{exc}\n"
+            "        若本机没有 MySQL，可临时在 .env 设置 DATABASE_URL=sqlite+aiosqlite:///./data/app.db"
+        ) from exc
+
+
+def describe() -> dict:
+    """给 /api/health 用的数据库自检信息（不含密码）。"""
+    if settings.is_mysql:
+        return {
+            "kind": "mysql",
+            "host": settings.MYSQL_HOST,
+            "port": settings.MYSQL_PORT,
+            "database": settings.MYSQL_DATABASE,
+            "user": settings.MYSQL_USER,
+            "driver": "aiomysql",
+        }
+    return {"kind": "sqlite", "dsn": settings.mysql_dsn}
