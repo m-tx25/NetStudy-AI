@@ -88,6 +88,13 @@ class Settings(BaseSettings):
     ZHIPUAI_EMBEDDING_DIM: int = 2048
 
     # ---------------- 向量库：ChromaDB ----------------
+    # 两种运行形态，由 CHROMA_HOST 是否为空决定：
+    #   1) 嵌入式（默认，本地开发）：数据落在 CHROMA_PERSIST_DIR
+    #   2) 客户端/服务端（Docker 部署）：设置 CHROMA_HOST / CHROMA_PORT，
+    #      后端通过 HTTP 连接独立的 Chroma 容器，数据由该容器持久化。
+    CHROMA_HOST: str = ""
+    CHROMA_PORT: int = 8000
+    # 嵌入式模式的落盘目录（CHROMA_HOST 非空时忽略）
     CHROMA_PERSIST_DIR: str = "./data/chroma_db"
     # 实际集合名会追加向量空间后缀（zhipu2048 / default），
     # 因为不同 embedding 模型的向量不可混用
