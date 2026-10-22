@@ -170,6 +170,40 @@ async def _ensure_columns() -> None:
                     # 多进程同时启动时可能撞车，记录即可
                     logger.warning("补列失败：%s -> %s", clause, exc)
 
+        # ----------------------------------------------------------------
+        # 回填：新增列在已有行上是 NULL，而绝大多数业务代码按「等于某个值」过滤，
+        # NULL 不匹配任何等值条件 —— 表现为「数据还在，但列表里看不到」。
+        # 例如 knowledge_bases.owner_type 补列后，老知识库全是 NULL，
+        # 用户登录后知识库数量显示 0（本机实测踩到）。
+        #
+        # 这里对「模型里声明了标量默认值」的列，把 NULL 回填成该默认值。
+        # 只处理标量默认（如 "user"、0、False），跳过 callable（如 now_utc）。
+        # ----------------------------------------------------------------
+        for table in metadata.sorted_tables:
+            if table.name not in existing:
+                continue
+            for column in table.columns:
+                default = column.default
+                if default is None or not getattr(default, "is_scalar", False):
+                    continue
+                value = default.arg
+                if callable(value):
+                    continue
+                stmt = (
+                    f"UPDATE {quote}{table.name}{quote} "
+                    f"SET {quote}{column.name}{quote} = :value "
+                    f"WHERE {quote}{column.name}{quote} IS NULL"
+                )
+                try:
+                    result = await conn.execute(text(stmt), {"value": value})
+                    if result.rowcount:
+                        logger.info(
+                            "迁移：表 %s 的 %s 回填默认值 %r（%s 行）",
+                            table.name, column.name, value, result.rowcount,
+                        )
+                except Exception as exc:
+                    logger.warning("回填 %s.%s 失败：%s", table.name, column.name, exc)
+
 
 async def init_db() -> None:
     """建库建表 + 补齐缺失列（开发期用；生产建议改用 Alembic 迁移）。"""
