@@ -47,9 +47,18 @@ async def team_role(db: AsyncSession, team_id: str, user_id: str) -> str | None:
 
 
 def accessible_condition(user_id: str, team_ids: list[str]):
-    """生成「可访问的知识库」SQL 条件。"""
+    """生成「可访问的知识库」SQL 条件。
+
+    注意 owner_type 可能为 **NULL**：该列是后加的（见 database._ensure_columns），
+    早期数据迁移时没有默认值，老行会是 NULL。
+    语义上 NULL 等价于「个人库」，因此这里必须把 NULL 也算进去，
+    否则老用户会看到「知识库数量为 0」，而数据其实都还在。
+    """
     personal = and_(
-        KnowledgeBase.owner_type == OWNER_USER,
+        or_(
+            KnowledgeBase.owner_type == OWNER_USER,
+            KnowledgeBase.owner_type.is_(None),
+        ),
         KnowledgeBase.owner_id == user_id,
     )
     if not team_ids:
