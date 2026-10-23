@@ -1,4 +1,4 @@
-# RAG 知识问答系统（chuangzhibei）
+# RAG 知识问答系统（NetStudy-AI）
 
 > 传智杯 Web 方向参赛项目 · 一个支持**多团队协作**的 RAG 知识问答平台
 
