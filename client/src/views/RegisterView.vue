@@ -90,22 +90,20 @@ async function handleSubmit() {
 
 <template>
   <AuthShell mode="register">
-    <h2 class="text-[22px] font-semibold tracking-tight app-text">
-      创建账号
-    </h2>
-    <p class="mt-1.5 text-[13px] app-muted">
-      注册后即可创建知识库、上传文档并开始智能问答
-    </p>
+    <template #lead>
+      <p class="auth-lead">
+        注册后即可创建知识库、上传文档并开始智能问答
+      </p>
+    </template>
 
     <el-form
       ref="formRef"
       :model="form"
       :rules="rules"
-      label-position="top"
       class="mt-6"
       @submit.prevent="handleSubmit"
     >
-      <el-form-item label="用户名" prop="username">
+      <el-form-item prop="username">
         <el-input
           v-model="form.username"
           size="large"
@@ -115,7 +113,7 @@ async function handleSubmit() {
         />
       </el-form-item>
 
-      <el-form-item label="邮箱" prop="email">
+      <el-form-item prop="email">
         <el-input
           v-model="form.email"
           size="large"
@@ -125,7 +123,7 @@ async function handleSubmit() {
         />
       </el-form-item>
 
-      <el-form-item label="密码" prop="password">
+      <el-form-item prop="password">
         <el-input
           v-model="form.password"
           type="password"
@@ -143,7 +141,7 @@ async function handleSubmit() {
         />
       </el-form-item>
 
-      <el-form-item label="确认密码" prop="confirmPassword">
+      <el-form-item prop="confirmPassword">
         <el-input
           v-model="form.confirmPassword"
           type="password"
@@ -156,32 +154,29 @@ async function handleSubmit() {
         />
       </el-form-item>
 
-      <el-checkbox v-model="form.agreed" class="!mb-4 !h-auto !items-start !whitespace-normal">
-        <span class="text-[12px] leading-5 app-muted">
+      <el-checkbox
+        v-model="form.agreed"
+        class="!mt-1 !h-auto !items-start !whitespace-normal"
+      >
+        <span class="text-[12px] leading-5">
           我已阅读并同意
-          <button type="button" class="app-accent hover:underline" @click.stop="openPolicy('terms')">
+          <button type="button" class="auth-link" @click.stop="openPolicy('terms')">
             《服务协议》
           </button>
           与
-          <button type="button" class="app-accent hover:underline" @click.stop="openPolicy('privacy')">
+          <button type="button" class="auth-link" @click.stop="openPolicy('privacy')">
             《隐私政策》
           </button>
         </span>
       </el-checkbox>
 
-      <el-button
-        type="primary"
-        size="large"
-        class="w-full !h-11 !rounded-xl !text-[15px] !font-medium"
-        :loading="loading"
-        @click="handleSubmit"
-      >
+      <el-button class="auth-submit !mt-5" :loading="loading" @click="handleSubmit">
         {{ submitLabel }}
       </el-button>
     </el-form>
 
     <template #below>
-      <p class="px-1 text-center text-[11px] leading-5 app-faint">
+      <p class="px-1 text-center text-[11px] leading-5" :style="{ color: 'var(--auth-faint)' }">
         {{ APP_TITLE }} 支持私有化部署，你的文档不会被用于训练对外公开的模型
       </p>
     </template>
