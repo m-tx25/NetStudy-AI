@@ -107,3 +107,71 @@ def test_default_secret_detection(monkeypatch) -> None:
 def test_upsert_batch_is_reasonably_small() -> None:
     """批次调小是为了降低 chromadb compactor 被打断的概率（见 config 注释）。"""
     assert 1 <= settings.CHROMA_UPSERT_BATCH <= 32
+
+
+# ------------------------------------------------- 向量库连接自愈（回归保护）
+def test_connection_error_detection() -> None:
+    """区分「连不上」与「集合不存在」——这个判定错了会导致计数恒 0。"""
+    from app.services import vectorstore
+
+    assert vectorstore._looks_like_connection_error(
+        RuntimeError('All connection attempts failed')
+    )
+    assert vectorstore._looks_like_connection_error(
+        RuntimeError('Server disconnected without sending a response')
+    )
+    assert not vectorstore._looks_like_connection_error(
+        RuntimeError('Collection knowledge_chunks_x does not exist')
+    )
+
+
+def test_call_with_reset_recovers_once(monkeypatch) -> None:
+    """连接断了要丢弃客户端重连一次，而不是一直返回空结果。"""
+    from app.services import vectorstore
+
+    class Broken:
+        def get_collection(self, name):
+            raise RuntimeError('connection closed by peer')
+
+    class Good:
+        def get_collection(self, name):
+            return f'ok:{name}'
+
+    seq = [Broken(), Good()]
+    monkeypatch.setattr(
+        vectorstore, 'get_client', lambda: seq.pop(0) if len(seq) > 1 else seq[0]
+    )
+
+    assert vectorstore._call_with_reset(lambda c: c.get_collection('x')) == 'ok:x'
+
+
+def test_call_with_reset_does_not_retry_business_errors(monkeypatch) -> None:
+    """业务错误（如集合不存在）不该触发重连，否则会掩盖真实原因。"""
+    from app.services import vectorstore
+
+    class Nope:
+        def get_collection(self, name):
+            raise ValueError('collection does not exist')
+
+    monkeypatch.setattr(vectorstore, 'get_client', lambda: Nope())
+
+    with pytest.raises(ValueError):
+        vectorstore._call_with_reset(lambda c: c.get_collection('x'))
+
+
+def test_existing_collections_propagates_connection_error(monkeypatch) -> None:
+    """连接类错误必须往外抛，不能被当成「没有集合」吞掉。
+
+    这正是线上表现「health 里 collections 为空、检索 0 条」的根因：
+    原实现 `except Exception: continue` 把连接失败也跳过了。
+    """
+    from app.services import vectorstore
+
+    class Broken:
+        def get_collection(self, name):
+            raise RuntimeError('connection reset by peer')
+
+    monkeypatch.setattr(vectorstore, 'get_client', lambda: Broken())
+
+    with pytest.raises(RuntimeError):
+        vectorstore._existing_collections()

@@ -127,6 +127,57 @@ def get_client():
     return _client
 
 
+def _reset_client() -> None:
+    """丢弃缓存的客户端。
+
+    为什么必须有：`_client` 是**进程级单例**，而 Chroma 服务重启后，
+    HttpClient 连接池里的连接会全部失效。不丢弃的话，后端会一直读不到集合
+    —— 表现为 `/api/health` 的 collections 为空、检索恒 0 条，
+    但 Chroma 里数据明明都在（实测：只能靠重启后端恢复，
+    而重启 Chroma 容器在 Docker 部署里是常规操作）。
+    """
+    global _client
+    _client = None
+
+
+# 连接类异常的典型特征词（httpx / httpcore / socket 的报错都落在这里）
+_CONNECTION_MARKERS = (
+    'connect',
+    'connection',
+    'timeout',
+    'timed out',
+    'closed',
+    'eof',
+    'reset',
+    'broken pipe',
+    'remote protocol',
+    'server disconnected',
+)
+
+
+def _looks_like_connection_error(exc: BaseException) -> bool:
+    """判断异常是否属于「连不上/连接已断」，而不是「集合不存在」等业务错误。"""
+    text = f'{type(exc).__module__}.{type(exc).__name__}: {exc}'.lower()
+    return any(marker in text for marker in _CONNECTION_MARKERS)
+
+
+def _call_with_reset(fn):
+    """执行 fn(client)；若判定为连接类错误，丢弃客户端后重试一次。
+
+    只重试一次：避免 Chroma 真的挂掉时无限重试把请求拖死。
+    """
+    try:
+        return fn(get_client())
+    except VectorStoreUnavailable:
+        raise
+    except Exception as exc:
+        if not _looks_like_connection_error(exc):
+            raise
+        logger.warning('向量库连接异常，丢弃客户端并重连一次：%s', exc)
+        _reset_client()
+        return fn(get_client())
+
+
 def get_collection(api_key: str | None = None):
     """获取（必要时创建）集合。
 
@@ -150,7 +201,6 @@ def get_collection(api_key: str | None = None):
     两种模式（智谱 / 内置离线）都实现了 `embed_documents` 与 `embed_query`，
     所以调用方总能拿到向量，不会退回到 Chroma 的 ONNX 模型。
     """
-    client = get_client()
     kwargs: dict[str, Any] = {
         "name": collection_name(api_key),
         # 显式声明距离度量，便于日后换 cosine 时行为可预期
@@ -158,7 +208,8 @@ def get_collection(api_key: str | None = None):
     }
 
     try:
-        return client.get_or_create_collection(**kwargs)
+        # 连接类错误会自动丢弃客户端重连一次（见 _call_with_reset）
+        return _call_with_reset(lambda c: c.get_or_create_collection(**kwargs))
     except Exception as exc:
         raise VectorStoreUnavailable(f"打开向量集合失败：{exc}") from exc
 
@@ -174,17 +225,24 @@ def _existing_collections() -> list[Any]:
         会漏掉「进程启动后新建的集合」，导致删除漏数据、统计偏小；
       - 已知名称只有两个（zhipu2048 / offline512），逐个 get_collection 成本极低。
     """
-    client = get_client()
     prefix = settings.CHROMA_COLLECTION
-    result = []
-    for suffix in _vector_space_suffixes():
-        name = f"{prefix}_{suffix}"
-        try:
-            result.append(client.get_collection(name))
-        except Exception:
-            # 集合不存在是常态（只用了其中一种向量空间），不需要告警
-            continue
-    return result
+
+    def _probe(client) -> list[Any]:
+        found = []
+        for suffix in _vector_space_suffixes():
+            name = f"{prefix}_{suffix}"
+            try:
+                found.append(client.get_collection(name))
+            except Exception as exc:
+                # 「集合不存在」是常态（只用了其中一种向量空间）；
+                # 但**连接类错误必须抛出去**，否则会被误判成「没有集合」，
+                # 表现为计数恒为 0、删除漏数据、检索空结果（本次踩坑点）。
+                if _looks_like_connection_error(exc):
+                    raise
+                continue
+        return found
+
+    return _call_with_reset(_probe)
 
 
 # --------------------------------------------------------------------------
