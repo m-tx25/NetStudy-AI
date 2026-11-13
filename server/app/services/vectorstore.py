@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import time
 from pathlib import Path
@@ -109,6 +110,13 @@ def get_client():
 
     host = (settings.CHROMA_HOST or "").strip()
     if host:
+        # 【关键】连本机/内网的 Chroma 必须绕过系统代理。
+        # chromadb 的 HttpClient 内部用 httpx，默认 trust_env=True ——
+        # 会把 WinINET/环境变量里的代理（如 Clash 的 127.0.0.1:7897）套在
+        # 发往 127.0.0.1:8000 的请求上，代理不认识这个目标，
+        # 于是返回 **502 Bad Gateway**，表现为「连接 Chroma 服务失败」或
+        # 「打开向量集合失败」，与索引损坏的现象极易混淆。
+        _ensure_proxy_bypass(host)
         try:
             _client = chromadb.HttpClient(host=host, port=settings.CHROMA_PORT)
             logger.info("向量库：连接 Chroma 服务 %s:%s", host, settings.CHROMA_PORT)
@@ -125,6 +133,27 @@ def get_client():
     except Exception as exc:  # 目录不可写、版本不兼容等
         raise VectorStoreUnavailable(f"初始化 ChromaDB 失败：{exc}") from exc
     return _client
+
+
+def _ensure_proxy_bypass(host: str) -> None:
+    """把 Chroma 的目标地址加入 NO_PROXY，避免本机请求被系统代理劫持。
+
+    为什么必须做：Windows 上只要开着 Clash 之类（系统代理 127.0.0.1:7897），
+    `httpx` 默认 `trust_env=True` 会连 127.0.0.1:8000 也走代理，
+    代理返回 **502 Bad Gateway**，而 chromadb 把响应体当错误抛出，
+    最终报成「连接 Chroma 服务失败」—— 和「索引损坏」表现几乎一样。
+    实测：同一份数据，加不加这条绕过，一个报 502 一个正常。
+
+    只改本进程的环境变量，不触碰系统设置；已存在的 NO_PROXY 会被保留。
+    """
+    targets = [host, "127.0.0.1", "localhost", "::1"]
+    current = os.environ.get("NO_PROXY") or os.environ.get("no_proxy") or ""
+    existing = {item.strip() for item in current.split(",") if item.strip()}
+    merged = existing.union(targets)
+    if merged != existing:
+        value = ",".join(sorted(merged))
+        os.environ["NO_PROXY"] = value
+        os.environ["no_proxy"] = value
 
 
 def _reset_client() -> None:

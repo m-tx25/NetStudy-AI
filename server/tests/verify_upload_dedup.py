@@ -21,6 +21,11 @@ import uuid
 
 import httpx
 
+# 本机验收：绕过系统代理，避免 Clash 之类把 127.0.0.1 也代理掉（否则 502 / 空响应）
+os.environ['NO_PROXY'] = ','.join(
+    filter(None, [os.environ.get('NO_PROXY', ''), '127.0.0.1', 'localhost'])
+)
+
 BASE = os.environ.get('API_BASE', 'http://127.0.0.1:3000/api')
 
 passed = 0
