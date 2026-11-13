@@ -1,117 +1,52 @@
 <script setup>
-import { computed, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Message, User } from '@element-plus/icons-vue'
-
-import { forgotPassword } from '@/api/auth'
-import { notifyError } from '@/utils/notify'
+/**
+ * 「忘记密码」说明弹窗
+ *
+ * 背景：这里原本是一个收集「用户名 + 邮箱」并提交的表单，提交后提示
+ * 「重置邮件已发送，请查收」——但后端从未真的发邮件，也不会改密码
+ * （`/api/auth/forgot-password` 当时只是返回成功）。
+ *
+ * 与其假装成功、让用户（尤其演示/评审场景）一直等一封永远不会来的邮件，
+ * 不如明确告知「暂未开放」并给出可行的替代路径。
+ * 后端该接口现在返回 501 + 同样的文案，直接调 API 也不会再被误导。
+ */
+import { Lock } from '@element-plus/icons-vue'
 
 const visible = defineModel({ type: Boolean, default: false })
-
-const formRef = ref(null)
-const submitting = ref(false)
-const sent = ref(false)
-
-const form = reactive({ username: '', email: '' })
-
-const rules = {
-  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
-  email: [
-    { required: true, message: '请输入注册邮箱', trigger: 'blur' },
-    { type: 'email', message: '邮箱格式不正确', trigger: 'blur' },
-  ],
-}
-
-const title = computed(() => (sent.value ? '重置邮件已发送' : '找回密码'))
 
 function close() {
   visible.value = false
 }
-
-async function submit() {
-  if (!formRef.value) return
-  try {
-    await formRef.value.validate()
-  } catch {
-    return
-  }
-
-  submitting.value = true
-  try {
-    await forgotPassword({ username: form.username.trim(), email: form.email.trim() })
-    sent.value = true
-    ElMessage.success('重置邮件已发送，请查收')
-  } catch (error) {
-    notifyError(error, '发送失败，请稍后重试')
-  } finally {
-    submitting.value = false
-  }
-}
-
-// 关闭后重置，便于下次打开
-function onClosed() {
-  sent.value = false
-  formRef.value?.resetFields()
-}
 </script>
 
 <template>
-  <el-dialog
-    v-model="visible"
-    :title="title"
-    width="420px"
-    append-to-body
-    @closed="onClosed"
-  >
-    <template v-if="!sent">
-      <p class="mb-5 text-[13px] leading-6 app-text-secondary">
-        输入你的用户名与注册邮箱，我们会向你发送一封密码重置邮件。
-      </p>
-
-      <el-form ref="formRef" :model="form" :rules="rules" label-position="top" @submit.prevent="submit">
-        <el-form-item label="用户名" prop="username">
-          <el-input
-            v-model="form.username"
-            size="large"
-            placeholder="请输入用户名"
-            :prefix-icon="User"
-          />
-        </el-form-item>
-        <el-form-item label="注册邮箱" prop="email">
-          <el-input
-            v-model="form.email"
-            size="large"
-            placeholder="you@example.com"
-            :prefix-icon="Message"
-            @keyup.enter="submit"
-          />
-        </el-form-item>
-      </el-form>
-
-      <p class="text-[11px] leading-5 app-faint">
-        出于安全考虑，无论账号是否存在，我们都会返回相同的结果。
-      </p>
-    </template>
-
-    <div v-else class="py-2 text-center">
+  <el-dialog v-model="visible" title="找回密码" width="440px" append-to-body>
+    <div class="py-2">
       <div class="mx-auto grid h-12 w-12 place-items-center rounded-full app-accent-soft">
-        <el-icon :size="24"><Message /></el-icon>
+        <el-icon :size="24"><Lock /></el-icon>
       </div>
-      <p class="mt-4 text-sm font-medium app-text">
-        重置链接已发送至 {{ form.email }}
+
+      <p class="mt-4 text-center text-sm font-medium app-text">
+        密码重置功能暂未开放
       </p>
-      <p class="mt-2 text-[13px] leading-6 app-muted">
-        请在 30 分钟内点击邮件中的链接完成重置。若未收到，请检查垃圾邮件目录，
-        或联系管理员协助处理。
+
+      <p class="mt-3 text-[13px] leading-6 app-text-secondary">
+        当前版本还没有接入邮件服务，无法自助重置密码。如需找回账号，请：
+      </p>
+
+      <ul class="mt-2 space-y-1.5 pl-5 text-[13px] leading-6 app-text-secondary">
+        <li class="list-disc">联系团队负责人或管理员，帮你重置密码；</li>
+        <li class="list-disc">或使用其他账号登录，在「设置 → API 密钥」重新配置即可继续使用。</li>
+      </ul>
+
+      <p class="mt-3 rounded-lg border app-border px-3 py-2 text-[12px] leading-5 app-muted">
+        演示账号：用户名 <code class="app-text">demo</code>，密码
+        <code class="app-text">123456</code>（可直接登录体验全部功能）。
       </p>
     </div>
 
     <template #footer>
-      <el-button v-if="!sent" @click="close">取消</el-button>
-      <el-button v-if="!sent" type="primary" :loading="submitting" @click="submit">
-        发送重置邮件
-      </el-button>
-      <el-button v-else type="primary" @click="close">知道了</el-button>
+      <el-button type="primary" @click="close">知道了</el-button>
     </template>
   </el-dialog>
 </template>

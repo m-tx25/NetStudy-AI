@@ -1,5 +1,7 @@
 # RAG 知识问答系统（NetStudy-AI）
 
+[![CI](https://github.com/m-tx25/NetStudy-AI/actions/workflows/ci.yml/badge.svg)](https://github.com/m-tx25/NetStudy-AI/actions/workflows/ci.yml)
+
 > 传智杯 Web 方向参赛项目 · 一个支持**多团队协作**的 RAG 知识问答平台
 ### 团队成员：
 
@@ -365,6 +367,42 @@ curl http://localhost:3000/api/health
 
 > 配置 Key 后**重启后端**生效（前端页面里填的 Key 即时生效，无需重启）。
 
+### 4.6.1 上线前必改：`SECRET_KEY`
+
+`server/.env` 里的 `SECRET_KEY` 承担两件事：**JWT 登录令牌的签名**、**数据库里 API 密钥的加密**。
+仓库里给的是公开的默认值，任何人都能看到。
+
+因此后端加了一道硬性限制：
+
+| `DEBUG` | 使用默认 `SECRET_KEY` 时的行为 |
+| --- | --- |
+| `true`（本地开发，默认） | 打一条 WARNING，正常启动 |
+| `false`（生产 / Docker） | **直接拒绝启动**并打印原因 |
+
+启动报错长这样：
+
+```
+RuntimeError: 拒绝启动：检测到默认 SECRET_KEY 且 DEBUG=false。
+解决：在 server/.env 写入 SECRET_KEY=<随机值>（生成：openssl rand -hex 32）
+```
+
+生成并写入：
+
+```bash
+# Linux / macOS
+sed -i "s|^SECRET_KEY=.*|SECRET_KEY=$(openssl rand -hex 32)|" server/.env
+```
+
+```powershell
+# Windows PowerShell
+$key = -join ((1..64) | ForEach-Object { '0123456789abcdef'[(Get-Random -Max 16)] })
+(Get-Content server\.env -Raw) -replace '(?m)^SECRET_KEY=.*', "SECRET_KEY=$key" |
+  Set-Content server\.env -NoNewline -Encoding utf8
+```
+
+> ⚠️ 换 `SECRET_KEY` 会让此前已存的 API 密钥无法解密（这是预期行为），
+> 用户需要重新填写；登录令牌也会全部失效，需重新登录。
+
 ### 4.7 接入真实后端 / 切换 Mock 模式
 
 前端**默认已接真实后端**（`client/.env.development` 里 `VITE_USE_MOCK=false`）。
@@ -397,6 +435,10 @@ curl http://localhost:3000/api/health
 | `server/` | `.\.venv\Scripts\python.exe tests\verify_teams.py` | 团队与密钥接口验收（需后端已启动，52 项） |
 | `server/` | `.\.venv\Scripts\python.exe tests\verify_team_kb.py` | 团队知识库与检索验收（23 项） |
 | `server/` | `.\.venv\Scripts\python.exe tests\verify_cleanup.py` | 删除时向量与文件清理验收（12 项） |
+| `server/` | `.\.venv\Scripts\python.exe tests\verify_permissions.py` | 团队库与文档管理权限验收（18 项） |
+| `server/` | `.\.venv\Scripts\python.exe -m pytest tests\test_units.py -q` | 纯单元测试（15 项，不连数据库，CI 同款） |
+| `server/` | `.\.venv\Scripts\python.exe cleanup_test_data.py` | 清理自动化测试留下的账号/团队（默认 dry-run，`--yes` 才执行） |
+| `server/` | `.\.venv\Scripts\python.exe prune_orphan_vectors.py` | 清理数据库已删但 Chroma 仍残留的切片（默认 dry-run） |
 | `server/` | `.\.venv\Scripts\python -m celery -A app.tasks.celery_app worker -l info` | 启动异步 worker（需 Redis） |
 | `client/` | `node scripts/e2e-teams.mjs` | 团队功能浏览器端到端（24 项，需前后端已启动） |
 | `client/` | `node scripts/e2e-judge.mjs` | 评委视角全流程端到端（10 项：上传→向量化→提问→引用） |
@@ -412,6 +454,31 @@ curl http://localhost:3000/api/health
   不要都堆在单文件里；对外字段一律用 camelCase，与前端契约保持一致。
 - 后端字段名必须与 `client/src/api/mock.js` 对齐 —— 那是当前唯一的接口契约来源，
   也是 `npm run check:server` 的核对基准。
+
+### 6.1 持续集成（GitHub Actions）
+
+`.github/workflows/ci.yml` 在每次推送与 PR 时自动跑两件事：
+
+| 任务 | 内容 |
+| --- | --- |
+| 后端 | 装依赖 → `compileall` 语法检查 → `pytest tests/test_units.py`（15 项）→ 导入冒烟 |
+| 前端 | `npm ci` → `npm run build` |
+
+本地等价命令（不依赖 GitHub）：
+
+```powershell
+cd server
+.\.venv\Scripts\python.exe -m compileall -q app tests
+.\.venv\Scripts\python.exe -m pytest tests/test_units.py -q
+.\.venv\Scripts\python.exe -c "import app.main; print('ok')"
+
+cd ..\client
+npm run build
+```
+
+> 需要数据库/Chroma 的验收脚本（`tests/verify_*.py`）**没放进 CI**：
+> 它们要连真实 MySQL 与向量库，在共享的 CI 环境里不稳定。
+> 那些按第五章的命令在本机跑即可。
 
 ## 七、环境适配与自检（本机已配置，协作者可选）
 
@@ -585,6 +652,23 @@ ChromaDB 1.5.x 的 Rust 绑定会写 `C:\Users\<用户>\.cache\chroma`（Linux �
 `~/.cache/chroma`）。该路径**不可写时初始化直接失败**，且报的是很误导人的
 `unable to open database file`。受限环境（沙箱、只读用户目录、CI）需注意。
 `CHROMA_CACHE_DIR` / `XDG_CACHE_HOME` **不被识别**，无法用环境变量改路径。
+
+### 8.4 「忘记密码」点了没反应 / 提示邮件已发送但收不到
+
+**这不是 bug，是该功能尚未实现。**
+
+早期版本后端 `/api/auth/forgot-password` 直接返回成功（桩实现），
+前端于是提示「重置邮件已发送，请查收」——但既不发邮件也不改密码，
+用户（尤其演示/评审时）会一直等一封不会来的邮件。
+
+现在两端都改成明确告知：
+
+- 前端弹窗直接说明「密码重置功能暂未开放」，并建议联系负责人或管理员重置，
+  同时给出演示账号 `demo / 123456`；
+- 后端该接口返回 **HTTP 501** 并附同样的说明，直接调 API 也不会被误导。
+
+要真正实现，按 `app/api/auth.py` 里该函数的注释做三步即可：
+生成一次性带过期的令牌 → 通过 SMTP 投递 → 新增「凭令牌设置新密码」接口。
 
 ## 九、协作
 
