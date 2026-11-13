@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Collection,
@@ -22,6 +22,7 @@ import { formatDateTime } from '@/utils/format'
 import { notifyError } from '@/utils/notify'
 
 const router = useRouter()
+const route = useRoute()
 const knowledgeStore = useKnowledgeStore()
 const chatStore = useChatStore()
 const teamStore = useTeamStore()
@@ -59,6 +60,14 @@ const baseStats = computed(() => {
 onMounted(async () => {
   // 团队列表用于「新建知识库」时选择归属（个人 / 某团队）
   await Promise.all([knowledgeStore.loadBases(), teamStore.loadTeams()])
+
+  // 从团队页「上传文档」跳过来时带 ?base=<id>，直接选中该库
+  // （团队知识库原先只能在本页新建，团队成员很难找过来）
+  const wanted = String(route.query.base || '')
+  if (wanted && knowledgeStore.bases.some((item) => item.id === wanted)) {
+    knowledgeStore.activeBaseId = wanted
+  }
+
   if (knowledgeStore.activeBaseId) await knowledgeStore.loadDocuments()
 })
 

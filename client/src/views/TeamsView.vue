@@ -15,6 +15,7 @@ import {
 } from '@element-plus/icons-vue'
 
 import AddMemberForm from '@/components/team/AddMemberForm.vue'
+import TeamKnowledgePanel from '@/components/team/TeamKnowledgePanel.vue'
 import TeamSettingsPanel from '@/components/team/TeamSettingsPanel.vue'
 import { useTeamStore } from '@/stores/team'
 import { useUserStore } from '@/stores/user'
@@ -534,6 +535,15 @@ onMounted(async () => {
                 </li>
               </ul>
             </div>
+          </el-tab-pane>
+
+          <!-- 团队知识库：查看 / 新建 / 跳转上传（原先只能在知识库页创建，入口太隐蔽） -->
+          <el-tab-pane label="知识库" name="knowledge">
+            <TeamKnowledgePanel
+              :team-id="activeTeam.id"
+              :can-create="teamStore.isMember"
+              :can-delete="teamStore.isAdmin"
+            />
           </el-tab-pane>
 
           <!-- 审批（仅管理员以上） -->
