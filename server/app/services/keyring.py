@@ -8,9 +8,12 @@
 | --- | --- |
 | 检索/索引**个人知识库** | 该用户自己的 Key（未配置则用服务端 Key） |
 | 检索/索引**团队知识库** | 该团队的 Key（未配置则用服务端 Key） |
-| 生成回答（问答） | 同一次问答所用知识库的归属方；无知识库时用提问者自己的 Key |
+| 生成回答（问答） | 同上；团队库没配团队 Key 时，用提问者自己的 Key 兜底；无知识库时用提问者自己的 Key |
 
 这样设计的好处：费用归属清晰（团队库花团队的钱），且**永远不会跨团队串用密钥**。
+
+前端「生成模型」下拉一旦显式选了模型（`user:<keyId>` / `server:<id>`），就以该选择为准，
+不再按归属覆盖 —— 否则界面上的选择等于摆设（旧版就是这样：选了个人模型仍报「未配置大模型」）。
 
 ## Provider（供应商）
 
@@ -30,7 +33,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
+from app.core.config import ModelConfig, settings
 from app.core.secrets import decrypt_secret
 from app.models import ApiKey
 
@@ -249,7 +252,7 @@ async def resolve_embedding_key(
 async def resolve_chat_key(
     db: AsyncSession, *, team_id: str | None = None, user_id: str | None = None
 ) -> ResolvedKey:
-    """生成密钥。优先归属方自配的生成类供应商，否则服务端默认。"""
+    """生成密钥。团队 Key 优先，其次提问者本人的 Key，最后服务端默认。"""
     if team_id:
         for provider in ("deepseek", "zhipu", "openai", "custom"):
             row = await get_key_row(db, SCOPE_TEAM, team_id, provider)
@@ -265,6 +268,75 @@ async def resolve_chat_key(
                 if resolved.usable:
                     return resolved
     return _server_key("deepseek", "chat")
+
+
+async def resolve_model_config(
+    db: AsyncSession,
+    model_id: str | None,
+    *,
+    user_id: str,
+    team_ids: list[str] | None = None,
+) -> ModelConfig | None:
+    """把前端「生成模型」下拉里选中的 id 解析成可直接调用的 ModelConfig。
+
+    支持三种前缀（与 GET /api/chat/models 下发的 id 一致）：
+
+        server:<id>    服务端 .env / LLM_MODELS 里配置的模型
+        user:<keyId>   提问者本人的 API 密钥
+        team:<keyId>   提问者所在团队的 API 密钥
+
+    返回 None 表示「这次选择不可用」：id 为空、密钥不属于本人/本团队、已停用、
+    解密失败、供应商不支持生成。调用方应据 None 回退到「按知识库归属自动选择」，
+    而不是直接报「未配置大模型」。
+    """
+    raw = (model_id or "").strip()
+    if not raw:
+        return None
+
+    prefix, sep, ident = raw.partition(":")
+    if not sep:  # 兼容不带前缀的旧 id，一律按服务端模型处理
+        prefix, ident = "server", raw
+
+    if prefix == "server":
+        return settings.resolve_model(ident)
+
+    if prefix not in (SCOPE_USER, SCOPE_TEAM):
+        logger.warning("无法识别的模型 id：%s", raw)
+        return None
+
+    row = (
+        await db.execute(select(ApiKey).where(ApiKey.id == ident))
+    ).scalar_one_or_none()
+    if row is None or not row.enabled or row.scope_type != prefix:
+        return None
+
+    # 作用域校验：个人密钥只能本人用，团队密钥只能用在本人所在的团队里，
+    # 防止把别人的 keyId 填进请求里盗刷。
+    if prefix == SCOPE_USER and row.scope_id != user_id:
+        return None
+    if prefix == SCOPE_TEAM and row.scope_id not in (team_ids or []):
+        return None
+
+    meta = provider_meta(row.provider)
+    if "chat" not in meta["capabilities"]:
+        return None
+
+    secret = decrypt_secret(row.secret)
+    if not secret:
+        return None
+
+    base_url = row.base_url or meta.get("default_base_url", "")
+    return ModelConfig(
+        id=f"{prefix}:{row.id}",
+        label=row.label or meta["label"],
+        base_url=base_url,
+        api_key=secret,
+        model=row.model or meta.get("default_chat_model", ""),
+        temperature=settings.LLM_TEMPERATURE,
+        kind="local"
+        if any(host in base_url for host in ("127.0.0.1", "localhost", "0.0.0.0"))
+        else "api",
+    )
 
 
 async def list_available_models(
