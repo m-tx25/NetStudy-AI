@@ -1,5 +1,5 @@
 /**
- * 根目录一键启动：同时跑前端（Vite）和后端（Express）。
+ * 根目录一键启动：同时跑前端（Vite）和后端（Python + FastAPI）。
  *
  *   npm run dev              # 前端 + 后端
  *   npm run dev -- --client  # 只跑前端（Mock 模式完全够用）
@@ -7,6 +7,10 @@
  *
  * 说明：这里用 stdio: 'inherit' 而不是管道，受管环境下管道会以 EPERM 失败；
  *      输出直接打印到当前终端，Ctrl+C 会同时结束两个子进程。
+ *
+ * 历史：后端最初是 Express（server 下的 npm start），后来迁到 Python + FastAPI，
+ *      这里若仍按 Express 启动会「跳过后端 / 后端立刻退出」，前端随之被一起收掉。
+ *      因此后端改为用 server/.venv 里的解释器跑 uvicorn。
  */
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
@@ -14,6 +18,8 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
+const IS_WIN = process.platform === 'win32'
+const VENV_PYTHON = join(ROOT, 'server', '.venv', IS_WIN ? 'Scripts/python.exe' : 'bin/python')
 
 const targets = [
   {
@@ -22,13 +28,17 @@ const targets = [
     cwd: join(ROOT, 'client'),
     command: 'npm run dev',
     hint: 'http://localhost:5173',
+    ready: () => existsSync(join(ROOT, 'client', 'node_modules')),
+    missing: 'client/node_modules 不存在，先执行 npm run install:client',
   },
   {
     name: 'server',
     label: '后端',
     cwd: join(ROOT, 'server'),
-    command: 'npm start',
-    hint: 'http://localhost:3000',
+    command: `"${VENV_PYTHON}" -m uvicorn app.main:app --host 127.0.0.1 --port 3000 --reload`,
+    hint: 'http://127.0.0.1:3000/docs',
+    ready: () => existsSync(VENV_PYTHON),
+    missing: 'server/.venv 不存在，先在 server 目录执行 .\\start.ps1 建虚拟环境并装依赖',
   },
 ]
 
@@ -46,10 +56,8 @@ if (!picked.length) {
 const children = []
 
 for (const target of picked) {
-  if (!existsSync(join(target.cwd, 'node_modules'))) {
-    console.warn(
-      `[dev] 跳过${target.label}：${target.cwd} 下没有 node_modules，先执行 npm run install:all`,
-    )
+  if (!target.ready()) {
+    console.warn(`[dev] 跳过${target.label}：${target.missing}`)
     continue
   }
 
