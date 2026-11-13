@@ -57,9 +57,20 @@ async def load_history(
         )
     ).scalars().all()
 
-    # 倒序取出后反转回正序；跳过生成失败或内容为空的回答
+    # 倒序取出后反转回正序；跳过生成失败或内容为空的回答。
+    # assistant 内容要先剥掉「无依据」标注：那段标注是服务端加的，
+    # 留在记忆里会让模型下一轮跟着复读（实测同一条回答出现两次标注）。
     ordered = list(reversed(rows))
-    return [(message.role, message.content) for message in ordered if message.content.strip()]
+    return [
+        (
+            message.role,
+            prompts.strip_leading_banner(message.content)
+            if message.role == "assistant"
+            else message.content,
+        )
+        for message in ordered
+        if message.content.strip()
+    ]
 
 
 async def _conversation_kb_ids(db: AsyncSession, conversation_id: str) -> list[str]:
@@ -337,9 +348,21 @@ async def stream_answer(
             question, context_chunks, history, grounded=grounded
         )
         if not grounded:
-            # 标注由服务端直接下发，不依赖模型自觉 —— 保证用户一定看得到
-            collected.append(prompts.FALLBACK_BANNER)
-            yield {"type": "delta", "content": prompts.FALLBACK_BANNER}
+            # 标注由服务端直接下发，不依赖模型自觉 —— 保证用户一定看得到。
+            # 两种情况文案不同：
+            #   chunks 为空 → 真的没召回到（多半没索引 / 没上传 / 未参与检索）
+            #   chunks 非空 → 召回了但被相关性门槛过滤（换问法更有效）
+            if chunks:
+                banner = prompts.FALLBACK_BANNER_WEAK.format(
+                    retrieved=len(chunks),
+                    top_score=max(chunk.score for chunk in chunks),
+                    lex=settings.RAG_MIN_LEXICAL_SCORE,
+                    strong=settings.RAG_STRONG_SCORE,
+                )
+            else:
+                banner = prompts.FALLBACK_BANNER
+            collected.append(banner)
+            yield {"type": "delta", "content": banner}
 
         try:
             async for piece in llm.stream_chat(

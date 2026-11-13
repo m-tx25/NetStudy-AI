@@ -175,3 +175,35 @@ def test_existing_collections_propagates_connection_error(monkeypatch) -> None:
 
     with pytest.raises(RuntimeError):
         vectorstore._existing_collections()
+
+
+# ------------------------------------------------- 回答正文里的「无依据」标注
+def test_strip_leading_banner_removes_marker() -> None:
+    """历史消息里的标注要剥掉，否则模型下一轮会跟着复读（实测出现两次）。"""
+    from app.rag import prompts
+
+    body = 'CAPWAP 是一种无线接入点控制协议。'
+    assert prompts.strip_leading_banner(prompts.FALLBACK_BANNER + body) == body
+    # 剥两层也算对：连续复读后正文开头可能叠了多条标注
+    assert prompts.strip_leading_banner(prompts.FALLBACK_BANNER * 2 + body) == body
+
+
+def test_strip_leading_banner_keeps_normal_quotes() -> None:
+    """正文中间的普通引用块不能被误删。"""
+    from app.rag import prompts
+
+    text = '> 这是引用原文\n\n' + '结论如下。'
+    assert prompts.strip_leading_banner(text) == text
+
+
+def test_weak_banner_mentions_thresholds() -> None:
+    """「召回了但不够相关」的文案要和「完全没召回」区分开。"""
+    from app.rag import prompts
+
+    weak = prompts.FALLBACK_BANNER_WEAK.format(
+        retrieved=5, top_score=0.76, lex=3, strong=0.85
+    )
+    assert '检索到 5 条' in weak
+    assert '0.76' in weak
+    assert '相关度都不足' in weak
+    assert '未检索到' not in weak

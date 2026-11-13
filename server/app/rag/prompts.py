@@ -54,6 +54,17 @@ FALLBACK_BANNER = (
     "> 如需基于内部资料的准确回答，请在下方「知识库管理」中上传相关文档后重新提问。\n\n"
 )
 
+# 「检索到了片段，但都不够相关」时的标注。
+# 不与上面那条混用：用户看到「未检索到」会以为向量库坏了/没索引，
+# 而实际是**召回了但被相关性门槛过滤**。这两件事的排查动作完全不同，必须说清。
+FALLBACK_BANNER_WEAK = (
+    "> ⚠️ **知识库中检索到 {retrieved} 条片段，但相关度都不足**"
+    "（最高相似度 {top_score:.2f}；判定门槛：词面命中 ≥ {lex} 或相似度 ≥ {strong}）。\n"
+    "> 以下回答由模型基于通用知识生成，**并非来自你上传的文档**，请自行核实准确性。\n"
+    "> 若确认文档里确有这部分内容，可换更具体的问法（带上原文里的术语），"
+    "或到「知识库管理」确认这些文档状态为「已就绪」且「参与检索」已打开。\n\n"
+)
+
 # 关闭回退（RAG_FALLBACK_TO_MODEL=false）时的纯提示文案
 NO_CONTEXT_ANSWER = (
     "知识库中没有检索到与该问题相关的依据。\n\n"
@@ -65,6 +76,33 @@ NO_CONTEXT_ANSWER = (
 
 # 供前端展示的「引导补充文档」提示（与 FALLBACK_BANNER 末尾一致）
 FALLBACK_HINT = "知识库中未收录该内容，建议上传相关文档以获得有依据的回答。"
+
+
+# 「无依据」标注的统一前缀。两条 banner 都以它开头，剥除时按前缀识别。
+_BANNER_PREFIX = "> ⚠️ **知识库中"
+
+
+def strip_leading_banner(text: str) -> str:
+    """去掉正文开头的「无依据」标注。
+
+    为什么需要：标注是**服务端**加在回答正文里的，会被存进数据库。
+    下一轮提问时这段历史会作为对话记忆喂给模型，模型看到上一轮是这么开头的，
+    就跟着复读一遍 —— 结果是「同一条回答里出现两次一模一样的标注」。
+    实测：连续两次无依据提问后，第二次的正文变成 `标注 + 标注 + 模型回答`。
+
+    只在**开头**剥除（且必须真的以标注前缀开头），不会误删正文中间的引用块。
+    """
+    if not text:
+        return text
+    stripped = text.lstrip()
+    if not stripped.startswith(_BANNER_PREFIX):
+        return text
+
+    lines = stripped.split("\n")
+    index = 0
+    while index < len(lines) and (lines[index].startswith(">") or not lines[index].strip()):
+        index += 1
+    return "\n".join(lines[index:]).lstrip("\n")
 
 
 def build_context(chunks: list[RetrievedChunk], snippet_limit: int = 600) -> str:
