@@ -377,14 +377,20 @@ async def seed_demo_data() -> None:
 
         # 用真实检索跑一遍，让演示回答里的引用与库内切片一致。
         # 检索要调 embedding 接口 + 查 Chroma，是同步阻塞的，丢线程池避免启动期卡死。
-        hits = await asyncio.to_thread(
-            vectorstore.search,
-            db,
-            "RAG 的检索流程是怎样的？",
-            owner_id=user.id,
-            knowledge_base_ids=["kb_tech"],
-            top_k=2,
-        )
+        # 向量库被禁用（CHROMA_DISABLED）时没有切片可查，直接按「无引用」播种，
+        # 否则这里一抛就会把整段演示数据事务回滚掉（连演示账号都留不下）。
+        try:
+            hits = await asyncio.to_thread(
+                vectorstore.search,
+                db,
+                "RAG 的检索流程是怎样的？",
+                owner_id=user.id,
+                knowledge_base_ids=["kb_tech"],
+                top_k=2,
+            )
+        except vectorstore.VectorStoreUnavailable as exc:
+            logger.warning("跳过演示引用的播种（%s）", exc)
+            hits = []
 
         answer = (
             "RAG（Retrieval-Augmented Generation）的核心是**先检索、再生成**，"
@@ -437,9 +443,12 @@ async def seed_demo_data() -> None:
         total_documents = (
             await db.execute(select(func.count(Document.id)))
         ).scalar_one()
-        total_chunks = await asyncio.to_thread(
-            vectorstore.count_chunks, owner_id=user.id
-        )
+        try:
+            total_chunks = await asyncio.to_thread(
+                vectorstore.count_chunks, owner_id=user.id
+            )
+        except vectorstore.VectorStoreUnavailable:
+            total_chunks = 0
         logger.info(
             "演示数据初始化完成：3 个知识库、%s 份文档、%s 个切片（向量模式 %s）",
             total_documents,

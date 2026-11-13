@@ -604,3 +604,466 @@
 .el-menu {
   border-right: none !important;
 }
+
+/* ==========================================================================
+   5. 登录 / 注册页（AuthShell）：左侧白底表单 + 右侧青绿宣传面板
+   —— 这一层是登录页自己的配色，刻意与工作台（深灰 + 青绿）解耦：
+      浅色下是白 + 蓝的商务风，深色下是同结构的深蓝之夜，两套都只换变量。
+   ========================================================================== */
+.auth-shell {
+  /* 浅色（默认） */
+  --auth-bg: #ffffff;
+  --auth-panel-1: #f7fdfb;
+  --auth-panel-2: #e3f6ef;
+  --auth-panel-3: #ceeee2;
+  --auth-title: #16191d;
+  --auth-body: #454b54;
+  --auth-muted: #757c86;
+  --auth-faint: #9aa1ab;
+  --auth-line: #e6e8eb;
+  --auth-field-bg: #ffffff;
+  --auth-field-line: #e2e4e8;
+  --auth-field-line-hover: #ced2d8;
+  --auth-blue: #0f9b7a;
+  --auth-blue-hover: #0b7c62;
+  --auth-blue-soft: #e7f6f1;
+  --auth-orange: #0b7c62;
+  --auth-chip-bg: rgba(255, 255, 255, 0.72);
+  --auth-chip-line: rgba(15, 155, 122, 0.16);
+
+  /* Element Plus 主色沿用品牌青绿（表单焦点、勾选框、加载态都跟着变） */
+  --el-color-primary: #0f9b7a;
+  --el-color-primary-light-3: #45b79c;
+  --el-color-primary-light-5: #7ecfbb;
+  --el-color-primary-light-7: #b4e3d7;
+  --el-color-primary-light-8: #cdece4;
+  --el-color-primary-light-9: #e7f6f1;
+  --el-color-primary-dark-2: #0b7c62;
+
+  background-color: var(--auth-bg);
+  color: var(--auth-body);
+}
+
+html.dark .auth-shell {
+  --auth-bg: #0b0e12;
+  --auth-panel-1: #0c1513;
+  --auth-panel-2: #10211d;
+  --auth-panel-3: #143028;
+  --auth-title: #e6eaef;
+  --auth-body: #b2bac4;
+  --auth-muted: #8a929d;
+  --auth-faint: #6a727d;
+  --auth-line: #232a33;
+  --auth-field-bg: #151a20;
+  --auth-field-line: #333c47;
+  --auth-field-line-hover: #4a5460;
+  --auth-blue: #2fd1a6;
+  --auth-blue-hover: #47dcb5;
+  --auth-blue-soft: rgba(47, 209, 166, 0.14);
+  --auth-orange: #47dcb5;
+  --auth-chip-bg: rgba(47, 209, 166, 0.12);
+  --auth-chip-line: rgba(47, 209, 166, 0.24);
+
+  --el-color-primary: #2fd1a6;
+  --el-color-primary-light-3: #55dab6;
+  --el-color-primary-light-5: #86e4c8;
+  --el-color-primary-light-7: #b7eedd;
+  --el-color-primary-light-8: #cdf3e7;
+  --el-color-primary-light-9: #e4f9f2;
+  --el-color-primary-dark-2: #22a988;
+}
+
+/* ---- 右侧宣传面板 ------------------------------------------------------ */
+.auth-panel {
+  background-image: linear-gradient(
+    152deg,
+    var(--auth-panel-1) 0%,
+    var(--auth-panel-2) 48%,
+    var(--auth-panel-3) 100%
+  );
+}
+
+/* 白色（或深色）S 形分界线：把左侧底色像参考图那样"推"进青绿面板 */
+.auth-curve path {
+  fill: var(--auth-bg);
+}
+
+.auth-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--auth-chip-line);
+  background-color: var(--auth-chip-bg);
+  font-size: 11px;
+  color: var(--auth-body);
+  white-space: nowrap;
+}
+
+.auth-badge--strong {
+  border-color: transparent;
+  background-color: var(--auth-blue);
+  color: #ffffff;
+}
+
+.auth-promo-title {
+  margin-top: 22px;
+  text-align: center;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  color: var(--auth-title);
+}
+
+.auth-promo-mark {
+  color: var(--auth-blue);
+}
+
+.auth-promo-sub {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 12.5px;
+  color: var(--auth-body);
+  white-space: nowrap;
+}
+
+.auth-promo-line {
+  width: 46px;
+  height: 1px;
+  background-image: linear-gradient(90deg, transparent, var(--auth-chip-line));
+}
+
+.auth-promo-line--right {
+  background-image: linear-gradient(90deg, var(--auth-chip-line), transparent);
+}
+
+.auth-promo-num {
+  color: var(--auth-orange);
+  font-weight: 700;
+}
+
+.auth-cap {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--auth-body);
+}
+
+.auth-cap-dot {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  margin-top: 8px;
+  border-radius: 999px;
+  background-color: var(--auth-blue);
+}
+
+.auth-cap-title {
+  color: var(--auth-title);
+  font-weight: 600;
+}
+
+.auth-promo-note {
+  margin-top: 12px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--auth-muted);
+}
+
+.auth-trust {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--auth-body);
+}
+
+/* ---- 左侧表单区 -------------------------------------------------------- */
+.auth-logo {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background-image: linear-gradient(140deg, #2fd1a6, var(--auth-blue));
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 700;
+  box-shadow: 0 10px 20px -12px rgba(15, 155, 122, 0.9);
+}
+
+.auth-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--auth-muted);
+  transition: color 0.18s ease;
+}
+
+.auth-back:hover {
+  color: var(--auth-blue);
+}
+
+.auth-h1 {
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: var(--auth-title);
+}
+
+.auth-h1-brand {
+  display: block;
+  margin-top: 2px;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--auth-blue);
+}
+
+.auth-tabs {
+  margin-top: 20px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  font-size: 13px;
+}
+
+.auth-tab {
+  position: relative;
+  color: var(--auth-muted);
+}
+
+.auth-tab--active {
+  padding-left: 10px;
+  color: var(--auth-title);
+  font-weight: 600;
+}
+
+.auth-tab--active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background-color: var(--auth-blue);
+  transform: translateY(-50%);
+}
+
+.auth-tab--link {
+  transition: color 0.18s ease;
+}
+
+.auth-tab--link:hover {
+  color: var(--auth-blue);
+}
+
+.auth-lead {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--auth-muted);
+}
+
+/* 胶囊输入框：改写 Element Plus 的 wrapper，保留 show-password / prefix-icon */
+.auth-shell .el-input__wrapper {
+  height: 50px;
+  padding: 0 18px;
+  border-radius: 999px;
+  background-color: var(--auth-field-bg);
+  box-shadow:
+    0 0 0 1px var(--auth-field-line) inset,
+    0 10px 24px -22px rgba(15, 60, 45, 0.35);
+  transition: box-shadow 0.18s ease;
+}
+
+.auth-shell .el-input__wrapper:hover {
+  box-shadow:
+    0 0 0 1px var(--auth-field-line-hover) inset,
+    0 10px 24px -22px rgba(15, 60, 45, 0.35);
+}
+
+.auth-shell .el-input__wrapper.is-focus {
+  box-shadow:
+    0 0 0 1.5px var(--auth-blue) inset,
+    0 12px 26px -20px rgba(15, 155, 122, 0.45);
+}
+
+.auth-shell .el-form-item.is-error .el-input__wrapper,
+.auth-shell .el-form-item.is-error .el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 1px var(--el-color-danger) inset;
+}
+
+.auth-shell .el-input__inner {
+  height: 48px;
+  font-size: 14px;
+  color: var(--auth-title);
+}
+
+.auth-shell .el-input__inner::placeholder {
+  color: var(--auth-faint);
+}
+
+.auth-shell .el-input__prefix-inner > :last-child {
+  margin-right: 8px;
+}
+
+.auth-shell .el-input__prefix,
+.auth-shell .el-input__suffix {
+  color: var(--auth-faint);
+}
+
+.auth-shell .el-form-item {
+  margin-bottom: 20px;
+}
+
+.auth-shell .el-form-item__error {
+  padding-left: 18px;
+  padding-top: 4px;
+  font-size: 11px;
+}
+
+.auth-shell .el-checkbox {
+  height: auto;
+  margin-right: 0;
+}
+
+.auth-shell .el-checkbox__label {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--auth-muted);
+}
+
+.auth-shell .el-checkbox__inner {
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  border-color: var(--auth-field-line-hover);
+}
+
+.auth-shell .el-checkbox__input.is-checked .el-checkbox__inner {
+  background-color: var(--auth-blue);
+  border-color: var(--auth-blue);
+}
+
+/* 主按钮：品牌色大胶囊 */
+.auth-shell .auth-submit.el-button {
+  width: 100%;
+  height: 52px;
+  border: none;
+  border-radius: 999px;
+  background-color: var(--auth-blue);
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 500;
+  box-shadow: 0 16px 30px -18px var(--auth-blue);
+  transition:
+    background-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+
+.auth-shell .auth-submit.el-button:hover,
+.auth-shell .auth-submit.el-button:focus {
+  background-color: var(--auth-blue-hover);
+  color: #ffffff;
+  box-shadow: 0 18px 34px -16px var(--auth-blue);
+}
+
+.auth-shell .auth-submit.el-button:active {
+  transform: translateY(1px);
+}
+
+/* 次级按钮：描边胶囊 */
+.auth-shell .auth-ghost.el-button {
+  width: 100%;
+  height: 48px;
+  border-radius: 999px;
+  border: 1px solid var(--auth-field-line);
+  background-color: transparent;
+  color: var(--auth-body);
+  font-size: 14px;
+  transition:
+    border-color 0.18s ease,
+    color 0.18s ease,
+    background-color 0.18s ease;
+}
+
+.auth-shell .auth-ghost.el-button:hover,
+.auth-shell .auth-ghost.el-button:focus {
+  border-color: var(--auth-blue);
+  background-color: var(--auth-blue-soft);
+  color: var(--auth-blue);
+}
+
+/* 「其他方式」分隔线 */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--auth-faint);
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background-color: var(--auth-line);
+}
+
+/* 链接型按钮（忘记密码） */
+.auth-link {
+  font-size: 12px;
+  color: var(--auth-muted);
+  transition: color 0.18s ease;
+}
+
+.auth-link:hover {
+  color: var(--auth-blue);
+}
+
+/* 页脚 */
+.auth-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--auth-faint);
+}
+
+.auth-footer a:hover,
+.auth-footer button:hover {
+  color: var(--auth-blue);
+}
+
+/* 模拟模式提示条（原琥珀色提示改成蓝灰中性条） */
+.auth-hint {
+  border: 1px solid var(--auth-line);
+  border-radius: 12px;
+  background-color: var(--auth-blue-soft);
+  padding: 10px 14px;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--auth-body);
+}
+
+.auth-hint code {
+  border-radius: 4px;
+  background-color: rgba(127, 127, 127, 0.16);
+  padding: 1px 5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}

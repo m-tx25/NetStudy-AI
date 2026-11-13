@@ -101,6 +101,12 @@ class Settings(BaseSettings):
     CHROMA_COLLECTION: str = "knowledge_chunks"
     # 混合检索：0.5×向量相似度 + 0.5×词面命中，术语/公式类文档更稳
     HYBRID_SEARCH: bool = True
+    # 完全关闭向量库（true 时任何检索/写入都不去碰 ChromaDB）。
+    # 用途：运行环境装不出可用的 Chroma 原生库时（实测某些 Windows 机器上
+    # chromadb 的 HNSW 在 add/upsert 时直接段错误 0xC0000005），
+    # 置 true 后后端仍能启动：问答退化为「模型自身知识」作答并在正文标注，
+    # 上传文档会明确报错不会把进程带崩。生产环境请保持 false。
+    CHROMA_DISABLED: bool = False
 
     # ---------------- 大模型（OpenAI 兼容，用于生成）----------------
     # 注意：DeepSeek 没有 /embeddings 接口，只能用于生成，不能用于向量化。

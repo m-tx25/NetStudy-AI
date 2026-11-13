@@ -128,20 +128,18 @@ onMounted(() => {
 
 <template>
   <AuthShell mode="login">
-    <h2 class="text-[22px] font-semibold tracking-tight app-text">
-      登录
-    </h2>
-    <p class="mt-1.5 text-[13px] app-muted">使用你的 {{ APP_TITLE }} 账号继续</p>
+    <template #lead>
+      <p class="auth-lead">使用你的 {{ APP_TITLE }} 账号继续</p>
+    </template>
 
     <el-form
       ref="formRef"
       :model="form"
       :rules="rules"
-      label-position="top"
       class="mt-6"
       @submit.prevent="handleSubmit"
     >
-      <el-form-item label="用户名" prop="username">
+      <el-form-item prop="username">
         <el-input
           v-model="form.username"
           size="large"
@@ -151,7 +149,7 @@ onMounted(() => {
         />
       </el-form-item>
 
-      <el-form-item label="密码" prop="password">
+      <el-form-item prop="password">
         <el-input
           v-model="form.password"
           type="password"
@@ -164,49 +162,45 @@ onMounted(() => {
         />
       </el-form-item>
 
-      <div class="-mt-1 mb-4 flex items-center justify-between">
+      <div class="flex items-center justify-between">
         <el-checkbox v-model="form.remember">记住账号</el-checkbox>
         <button
           type="button"
-          class="text-[13px] app-accent underline-offset-2 transition hover:underline"
+          class="auth-link"
           @click="forgotVisible = true"
         >
           忘记密码？
         </button>
       </div>
 
-      <el-checkbox v-model="form.agreed" class="!mb-4 !h-auto !items-start !whitespace-normal">
-        <span class="text-[12px] leading-5 app-muted">
+      <el-checkbox
+        v-model="form.agreed"
+        class="!mt-3 !h-auto !items-start !whitespace-normal"
+      >
+        <span class="text-[12px] leading-5">
           我已阅读并同意
-          <button type="button" class="app-accent hover:underline" @click.stop="openPolicy('terms')">
+          <button type="button" class="auth-link" @click.stop="openPolicy('terms')">
             《服务协议》
           </button>
           与
-          <button type="button" class="app-accent hover:underline" @click.stop="openPolicy('privacy')">
+          <button type="button" class="auth-link" @click.stop="openPolicy('privacy')">
             《隐私政策》
           </button>
         </span>
       </el-checkbox>
 
-      <el-button
-        type="primary"
-        size="large"
-        class="w-full !h-11 !rounded-xl !text-[15px] !font-medium"
-        :loading="loading"
-        @click="handleSubmit"
-      >
+      <el-button class="auth-submit !mt-5" :loading="loading" @click="handleSubmit">
         {{ submitLabel }}
       </el-button>
     </el-form>
 
-    <el-divider class="!my-5">
-      <span class="text-[11px] font-normal text-[#a8a8a8]">其他方式</span>
-    </el-divider>
+    <div class="auth-divider mt-6">
+      <span class="text-[11px]">其他方式</span>
+    </div>
 
     <el-button
       v-if="isMockMode"
-      size="large"
-      class="w-full !h-11 !rounded-xl"
+      class="auth-ghost mt-4"
       :loading="demoLoading"
       @click="handleDemoLogin"
     >
@@ -214,23 +208,19 @@ onMounted(() => {
     </el-button>
     <el-button
       v-else
-      size="large"
-      class="w-full !h-11 !rounded-xl"
+      class="auth-ghost mt-4"
       @click="router.push({ name: 'register' })"
     >
       创建新账号
     </el-button>
 
     <template #below>
-      <div
-        v-if="isMockMode"
-        class="rounded-xl border border-amber-200/70 bg-amber-50/70 px-3.5 py-2.5 text-[11px] leading-5 text-amber-700 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-300"
-      >
+      <div v-if="isMockMode" class="auth-hint">
         <span class="font-medium">演示模式</span>
         ：已预填 <code>demo / 123456</code>；也可用任意用户名 + 6 位以上密码登录。
       </div>
 
-      <p v-else class="px-1 text-center text-[11px] leading-5 app-faint">
+      <p v-else class="px-1 text-center text-[11px] leading-5" :style="{ color: 'var(--auth-faint)' }">
         登录即表示你同意我们按照《隐私政策》处理你的账号信息
       </p>
     </template>

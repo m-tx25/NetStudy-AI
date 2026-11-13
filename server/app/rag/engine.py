@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from collections.abc import AsyncGenerator
 from dataclasses import replace
 from typing import Any
@@ -37,6 +38,8 @@ from app.models import (
 from app.rag import prompts
 from app.services import access, keyring, llm, vectorstore
 from app.utils.ids import new_id
+
+logger = logging.getLogger(__name__)
 
 
 async def load_history(
@@ -222,19 +225,28 @@ async def stream_answer(
 
     # search() 内部要调 embedding HTTP 接口 + 查 Chroma，是同步阻塞的；
     # 放在事件循环里会冻住整个服务（含其它接口），必须丢线程池。
-    chunks = await asyncio.to_thread(
-        vectorstore.search,
-        db,
-        question,
-        owner_id=user.id,
-        knowledge_base_ids=kb_ids,
-        top_k=top_k or settings.TOP_K,
-        score_threshold=(
-            score_threshold if score_threshold is not None else settings.SCORE_THRESHOLD
-        ),
-        team_ids=team_ids,
-        embedding_api_key=resolved_embed.secret,
-    )
+    #
+    # 向量库不可用（Chroma 初始化失败、集合打不开等）时**不能让整个问答 500**：
+    # 统一按「本次没有检索到依据」处理，继续走下面的回退逻辑
+    # （用模型自身知识作答并在正文标注「非知识库依据」），
+    # 否则用户只会看到一条原始的内部错误，连换个问法重试都做不到。
+    try:
+        chunks = await asyncio.to_thread(
+            vectorstore.search,
+            db,
+            question,
+            owner_id=user.id,
+            knowledge_base_ids=kb_ids,
+            top_k=top_k or settings.TOP_K,
+            score_threshold=(
+                score_threshold if score_threshold is not None else settings.SCORE_THRESHOLD
+            ),
+            team_ids=team_ids,
+            embedding_api_key=resolved_embed.secret,
+        )
+    except vectorstore.VectorStoreUnavailable as exc:
+        logger.warning("向量检索不可用，按「无知识库依据」处理：%s", exc)
+        chunks = []
 
     # ---------- 5. 选择生成模型与作答模式 ----------
     selected_model = llm.resolve_model(model_id)

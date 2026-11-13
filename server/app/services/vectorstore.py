@@ -93,6 +93,13 @@ def get_client():
     global _client
     if _client is not None:
         return _client
+
+    if settings.CHROMA_DISABLED:
+        raise VectorStoreUnavailable(
+            "向量库已被配置禁用（server/.env 里 CHROMA_DISABLED=true）："
+            "当前环境无法运行 ChromaDB 原生索引库，检索能力不可用。"
+        )
+
     try:
         import chromadb
     except ImportError as exc:  # pragma: no cover

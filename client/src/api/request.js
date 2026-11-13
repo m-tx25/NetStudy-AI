@@ -134,18 +134,27 @@ request.interceptors.response.use(
       '网络异常，请稍后重试'
 
     if (status === 401) {
-      clearToken()
-      message = '登录状态已失效，请重新登录'
-      // 并发请求会同时收到 401，这里只弹一次、只跳转一次，
-      // 否则用户会被多条相同提示与重复跳转淹没。
-      if (!unauthorizedNotified) {
-        unauthorizedNotified = true
-        if (typeof unauthorizedHandler === 'function') unauthorizedHandler()
+      // 登录 / 注册接口的 401 是「账号或密码不正确」，不是会话失效：
+      // 此时不能清 token、不能跳转，否则登录页会被自己的 401 反复重定向，
+      // 用户看到的还是「登录状态已失效」，根本不知道是密码错了。
+      const isCredentialEntry = /\/auth\/(login|register)(\?|$)/.test(config.url || '')
+
+      if (isCredentialEntry) {
+        message = error.response?.data?.message || '用户名或密码不正确'
       } else {
-        // 已提示过：静默失败，不再弹窗
-        const apiError = new ApiError(message, { status, payload: error.response?.data })
-        apiError.__notified = true
-        return Promise.reject(apiError)
+        clearToken()
+        message = '登录状态已失效，请重新登录'
+        // 并发请求会同时收到 401，这里只弹一次、只跳转一次，
+        // 否则用户会被多条相同提示与重复跳转淹没。
+        if (!unauthorizedNotified) {
+          unauthorizedNotified = true
+          if (typeof unauthorizedHandler === 'function') unauthorizedHandler()
+        } else {
+          // 已提示过：静默失败，不再弹窗
+          const apiError = new ApiError(message, { status, payload: error.response?.data })
+          apiError.__notified = true
+          return Promise.reject(apiError)
+        }
       }
     } else if (status === 403) {
       message = '没有权限执行该操作'
