@@ -1,14 +1,16 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Collection, Setting } from '@element-plus/icons-vue'
 
 import { useChatStore } from '@/stores/chat'
 import { useKnowledgeStore } from '@/stores/knowledge'
+import { useTeamStore } from '@/stores/team'
 
 const router = useRouter()
 const chatStore = useChatStore()
 const knowledgeStore = useKnowledgeStore()
+const teamStore = useTeamStore()
 
 const bases = computed(() => knowledgeStore.bases)
 const selectedIds = computed(() => chatStore.selectedKnowledgeBaseIds)
@@ -16,6 +18,23 @@ const selectedIds = computed(() => chatStore.selectedKnowledgeBaseIds)
 const allSelected = computed(
   () => bases.value.length > 0 && selectedIds.value.length === bases.value.length,
 )
+
+// 团队名称，用来在列表里标出「这是哪个团队的库」
+const teamNameById = computed(() => {
+  const map = new Map()
+  for (const team of teamStore.teams || []) map.set(team.id, team.name)
+  return map
+})
+
+function teamNameOf(base) {
+  if (base.ownerType !== 'team') return ''
+  return teamNameById.value.get(base.ownerId) || '团队'
+}
+
+onMounted(() => {
+  // 只为把团队库标上团队名；失败不影响主流程
+  teamStore.loadTeams().catch(() => {})
+})
 
 function isSelected(id) {
   return selectedIds.value.includes(id)
@@ -91,10 +110,23 @@ function resetParams() {
             tabindex="-1"
           />
           <span class="min-w-0 flex-1">
-            <span class="block truncate text-sm app-text">
-              {{ base.name }}
+            <span class="flex items-center gap-1.5">
+              <!-- 团队库要能一眼看出来：否则同一批列表里个人库与团队库长得一样 -->
+              <el-tag
+                v-if="base.ownerType === 'team'"
+                size="small"
+                type="primary"
+                effect="plain"
+                class="shrink-0"
+              >
+                团队
+              </el-tag>
+              <span class="truncate text-sm app-text">{{ base.name }}</span>
             </span>
-            <span class="block text-[11px] app-muted">
+            <span class="block truncate text-[11px] app-muted">
+              <template v-if="base.ownerType === 'team'">
+                团队「{{ teamNameOf(base) }}」·
+              </template>
               {{ base.documentCount ?? 0 }} 篇文档 · {{ base.chunkCount ?? 0 }} 个片段
             </span>
           </span>
