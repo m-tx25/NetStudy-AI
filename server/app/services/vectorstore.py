@@ -343,8 +343,10 @@ def add_chunks(
     if not ids:
         return 0
 
-    # 分批写入，避免单次请求过大（智谱 embedding 单次最多 64 条）
-    batch = 32
+    # 分批写入。倍数由 CHROMA_UPSERT_BATCH 控制（默认 8，见 config 里的说明）：
+    # chromadb 1.x 的 compactor 在一次写入被打断后会永久卡死，
+    # 批次越小越不容易触发。智谱 embedding 单次最多 64 条，默认值远低于该上限。
+    batch = max(1, settings.CHROMA_UPSERT_BATCH)
     written = 0
     embedder = embeddings.get_embeddings(embedding_api_key or None)
 

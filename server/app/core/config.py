@@ -101,6 +101,13 @@ class Settings(BaseSettings):
     CHROMA_COLLECTION: str = "knowledge_chunks"
     # 混合检索：0.5×向量相似度 + 0.5×词面命中，术语/公式类文档更稳
     HYBRID_SEARCH: bool = True
+    # 写入 Chroma 的批次大小。
+    # 为什么调小：chromadb 1.x 的 compactor 在**一次写入被中途打断**后
+    # 会永久卡在「Failed to apply logs to the metadata segment」，
+    # 整个向量库从此不可用（官方 issue chroma-core/chroma#5366 仍 open，
+    # 社区的做法是缩小 upsert 批次来降低概率）。
+    # 单批越小，单次事务越短，越不容易被打断；代价是请求次数变多。
+    CHROMA_UPSERT_BATCH: int = 8
     # 完全关闭向量库（true 时任何检索/写入都不去碰 ChromaDB）。
     # 用途：运行环境装不出可用的 Chroma 原生库时（实测某些 Windows 机器上
     # chromadb 的 HNSW 在 add/upsert 时直接段错误 0xC0000005），

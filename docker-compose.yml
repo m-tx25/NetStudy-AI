@@ -60,6 +60,40 @@ services:
     networks:
       - ragnet
 
+  # ----------------------------------------------------------------- Chroma
+  # 独立向量库服务。
+  #
+  # 为什么必须独立，不能继续用嵌入式（PersistentClient）：
+  #   embedded 模式底层是一份 SQLite，**只允许单个进程写**。
+  #   而 docker 里 backend 与 celery_worker 是两个进程、挂同一份数据目录，
+  #   同时写就会触发 chromadb 1.x 的 compactor 缺陷：
+  #     Error in compaction: Failed to apply logs to the metadata segment
+  #   一旦触发就永久卡死，只能删库重建（官方 issue chroma-core/chroma#5366 仍 open）。
+  #
+  # 改成服务模式后，只有 chroma 容器自己写数据库，
+  # backend / celery_worker 都是 HTTP 客户端，多写者天然安全。
+  chroma:
+    image: chromadb/chroma:1.5.9
+    container_name: rag-chroma
+    restart: unless-stopped
+    environment:
+      IS_PERSISTENT: 'TRUE'
+      # 关闭匿名遥测：不向第三方发送任何数据
+      ANONYMIZED_TELEMETRY: 'FALSE'
+      TZ: Asia/Shanghai
+    volumes:
+      - chroma-data:/data
+    healthcheck:
+      # chroma 镜像里没有 curl/bash 的保证，用自带的 python 探活最稳
+      test:
+        ['CMD-SHELL', 'python -c "import socket; socket.create_connection((\"127.0.0.1\", 8000), 3)" || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - ragnet
+
   # ---------------------------------------------------------------- Backend
   backend:
     build:
@@ -94,17 +128,25 @@ services:
 
       # 数据目录（与下面的 volumes 挂载点对齐）
       UPLOAD_DIR: /app/data/uploads
-      CHROMA_PERSIST_DIR: /app/data/chroma_db
+      # 【关键】指向独立 Chroma 服务，而不是本地目录。
+      # 只要 CHROMA_HOST 非空，vectorstore 就用 HttpClient 走 HTTP，
+      # CHROMA_PERSIST_DIR 会被忽略。
+      CHROMA_HOST: chroma
+      CHROMA_PORT: '8000'
+      # 批次仍调小，降低单次写入体量（见 config.py 的说明）
+      CHROMA_UPSERT_BATCH: '8'
 
       PORT: '8000'
       DEBUG: 'false'
     volumes:
-      # 上传文件 + ChromaDB 向量数据，落到宿主机，重建容器不丢
-      - ./server/data:/app/data
+      # 只挂上传文件；向量数据由 chroma 容器自己持久化
+      - ./server/data/uploads:/app/data/uploads
     depends_on:
       mysql:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      chroma:
         condition: service_healthy
     networks:
       - ragnet
@@ -136,16 +178,19 @@ services:
       CELERY_TASK_ALWAYS_EAGER: 'false'
 
       UPLOAD_DIR: /app/data/uploads
-      CHROMA_PERSIST_DIR: /app/data/chroma_db
+      # 与 backend 一致：走独立 Chroma 服务（HTTP 客户端），
+      # 这样 backend 与 worker 同时写也不会破坏数据库。
+      CHROMA_HOST: chroma
+      CHROMA_PORT: '8000'
+      CHROMA_UPSERT_BATCH: '8'
       PORT: '8000'
       DEBUG: 'false'
-    # 必须挂同一个数据目录：worker 要读上传的原始文件，并把向量写进 Chroma
+    # 挂上传目录（worker 要读原始文件）；
+    # 向量写入走 HTTP 到 chroma 容器，不再需要挂 chroma 数据目录
     volumes:
-      - ./server/data:/app/data
-    # 覆盖镜像默认的 uvicorn 启动命令。
-    # --concurrency=1：ChromaDB 嵌入式模式底层是 SQLite，同一份数据被
-    # backend 与 worker 两个进程同时写时，多并发容易触发
-    # "database is locked"。单并发最稳；压测后可逐步调大。
+      - ./server/data/uploads:/app/data/uploads
+    # --concurrency=1：仍是单进程消费队列，便于观察与降低压力；
+    # 向量写入已走 Chroma 服务，不再是并发瓶颈。
     command:
       - celery
       - -A
@@ -181,7 +226,7 @@ services:
       - ragnet
 
 # 所有服务都在同一个 bridge 网络里，
-# 因此可以直接用服务名互相访问（backend / mysql / redis / celery_worker）
+# 因此可以直接用服务名互相访问（backend / mysql / redis / chroma）
 networks:
   ragnet:
     name: rag-net
@@ -192,3 +237,6 @@ volumes:
     name: rag-mysql-data
   redis-data:
     name: rag-redis-data
+  # Chroma 自己持有一份数据；backend 与 worker 只通过 HTTP 访问，不直接碰文件
+  chroma-data:
+    name: rag-chroma-data
