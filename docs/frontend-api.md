@@ -262,13 +262,17 @@ data: {"choices":[{"delta":{"content":"增量文本"}}]}
     "chunks": 186,
     "status": "ready",
     "enabled": true,
-    "uploadedAt": "2025-01-01T10:00:00.000Z"
+    "uploadedAt": "2025-01-01T10:00:00.000Z",
+    "error": "",
+    "duplicated": false
   }
 ]
 ```
 
 `status` 取值：`pending`（排队中）/ `processing`（解析中）/ `ready`（已就绪）/ `failed`（失败）。
 只有 `ready` 且 `enabled !== false` 的文档参与检索。
+
+`duplicated` 只在**上传接口**的返回里有意义（见下），列表接口恒为 `false`。
 
 ### POST `/api/documents/upload`
 
@@ -282,6 +286,16 @@ data: {"choices":[{"delta":{"content":"增量文本"}}]}
 返回单个文档对象。前端通过 `onUploadProgress` 显示上传进度，拿到响应后进度条置为 100% 并显示「解析中」；
 若后端是异步解析，可先用 `processing` 返回，再由前端刷新或轮询得到 `ready`。
 
+**内容去重**：后端对文件内容算 SHA-256，若**同一知识库**内已存在相同内容且状态不是 `failed`，
+则不会新建记录，而是返回**已有那条文档**并带 `"duplicated": true`。
+
+```json
+{ "id": "d1", "name": "需求规格说明书_v2.pdf", "duplicated": true, ... }
+```
+
+前端应据此提示「已存在（跳过）」，且**不要**把这条再插入列表（会造成同 id 两条记录）。
+不同知识库各自保留一份，不算重复；`failed` 记录不参与命中，允许重传重试。
+
 ### PATCH `/api/documents/:id`
 
 ```json
@@ -289,6 +303,33 @@ data: {"choices":[{"delta":{"content":"增量文本"}}]}
 ```
 
 ### DELETE `/api/documents/:id`
+
+### POST `/api/documents/batch-delete`
+
+批量删除，请求体：
+
+```json
+{ "documentIds": ["d1", "d2", "d3"] }
+```
+
+单次上限 200 个。逐条走与单条删除相同的权限判定，返回三类结果：
+
+```json
+{
+  "deleted": ["d1", "d2"],
+  "forbidden": ["d3"],
+  "missing": []
+}
+```
+
+| 字段 | 含义 |
+| --- | --- |
+| `deleted` | 已删除 |
+| `forbidden` | 有权查看但无权删除（团队库中非本人上传、且不是负责人/管理员） |
+| `missing` | 不存在或无权查看（统一按不存在处理，不暴露存在性） |
+
+无权限或不存在不会让整批失败；前端应按 `deleted` 列表更新本地状态，
+并把另外两类原因如实提示给用户。
 
 ### POST `/api/documents/:id/reindex`
 

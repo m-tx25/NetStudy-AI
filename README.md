@@ -29,6 +29,8 @@
 | 智能问答 | ChatGPT 风格界面，SSE 流式返回 + 打字机效果，可随时停止生成，多轮记忆 |
 | 引用溯源 | 每条回答列出引用原文片段（文档名、页码、相关度），可点开核对；无依据时明确标注「非知识库依据」 |
 | 知识库管理 | 知识库 CRUD、拖拽多文件上传、解析状态轮询、参与检索开关、重新索引；支持**个人库 / 团队库** |
+| 上传去重 | 同一知识库内按文件内容 SHA-256 去重：重复上传同一份文件会提示「已存在（跳过）」，不再产生第二份切片与重复引用 |
+| 批量删除 | 文档列表支持多选批量删除；逐条判定权限，返回「已删除 / 无权限 / 不存在」三类结果，部分失败不会让整批失败 |
 | 团队协作 | 团队 CRUD、邀请码与搜索加入、QQ 群式入队审核、角色（负责人/管理员/成员）、负责人转让、管理员直接拉人 |
 | API 密钥 | **团队级 + 个人级**双作用域（智谱 / DeepSeek / OpenAI / 自定义），加密存储、只显示掩码，按知识库归属自动选用 |
 | 模型选择 | 可在多个生成模型间切换（服务端配置 + 自备密钥），生成模型与向量化模型解耦 |
@@ -288,28 +290,63 @@ npm run install:client   # 安装前端依赖
 
 ### 4.4 启动
 
-**方式一：一条命令同时起前后端（推荐）**
+**方式一：`dev.cmd` 一条命令起「向量库 + 后端」+ 前端（推荐）**
 
-```bash
-npm run dev              # 前端 http://localhost:5173 + 后端 http://localhost:3000
-npm run dev -- --client  # 只起前端（Mock 模式足够体验全部功能）
-npm run dev -- --server  # 只起后端
-```
+> 本项目默认使用**独立的 Chroma 服务**（`CHROMA_HOST` 非空），
+> 因此除了后端，还需要先有一个 Chroma 进程在 8000 端口。
 
-> 说明：根目录的脚本通过 `npm --prefix` 转发到 `client/`，本身不含业务逻辑。
-> 若根目录执行 `npm run dev` 报 `Missing script: "dev"`，说明拿到的是较早版本的代码。
-
-**方式二：两个终端分别启动**
-
-```bash
-# 终端 1：后端，http://localhost:3000
+```powershell
+# 终端 1：Chroma + 后端（dev.cmd 会自动拉起 Chroma 再起后端）
 cd server
-.\start.ps1                       # 自动建 venv / 装依赖 / 启动（含热重载）
+.\dev.cmd
 
-# 终端 2：前端，http://localhost:5173
+# 终端 2：前端
 cd client
 npm run dev
 ```
+
+`dev.cmd` 的几个开关：
+
+| 命令 | 作用 |
+| --- | --- |
+| `.\dev.cmd` | 启动 Chroma（若未运行）+ 后端 |
+| `.\dev.cmd --reindex` | 启动前重建全部文档的向量索引 |
+| `.\dev.cmd --rebuild` | 先把旧向量库备份为 `chroma_db.broken-<时间戳>` 再启动 |
+| `.\dev.cmd --rebuild --reindex` | **向量库索引真损坏时的一键恢复** |
+
+> `dev.cmd` 是**纯 ASCII** 的：`cmd.exe` 按 GBK 读 `.cmd`，
+> UTF-8 中文注释会被拆成命令（表现为 `'index' 不是内部或外部命令`）。
+
+**方式二：根目录一条命令起前后端（不含 Chroma）**
+
+```bash
+npm run dev              # 前端 5173 + 后端 3000
+npm run dev -- --client  # 只起前端（Mock 模式足够体验功能）
+npm run dev -- --server  # 只起后端
+```
+
+> 这种方式不会启动 Chroma。若想连真实向量库，仍需先跑 `server\dev.cmd`
+> 或 `server\start-chroma.cmd`，二者只为启动 Chroma + 后端。
+
+**方式三：三个终端手动分别启动**
+
+```bash
+# 终端 1：Chroma，http://127.0.0.1:8000
+cd server
+.\start-chroma.cmd
+
+# 终端 2：后端，http://localhost:3000
+cd server
+.\start.cmd
+
+# 终端 3：前端，http://localhost:5173
+cd client
+npm run dev
+```
+
+> ⚠️ **同一份 `data/chroma_db` 只能被一个 Chroma 进程打开**。
+> 同时开两个（例如既跑 `dev.cmd` 又跑 `start-chroma.cmd`）会把索引写坏，
+> 之后所有写入都会报 `Error loading hnsw index`。
 
 打开 <http://localhost:5173> 是公开的产品首页（`/`），点导航栏「登录」进入 `/login`；
 演示账号 **`demo` / `123456`**（后端首次启动时自动创建），登录后进入工作台：
@@ -335,11 +372,22 @@ cd server
 curl http://localhost:3000/api/health
 ```
 
-关注两个字段：
+关注三个字段：
 
 - `"llmConfigured"`：`true` 表示配了大模型；`false` 时会走「原文摘录」模式
 - `"vectorStore"."embedding"."mode"`：`zhipu-embedding-3`（配了 Key）或
   `offline-hash`（内置离线，正常）
+- `"vectorStore"."available"` + `"collections"` + `"totalChunks"`：
+  **确认向量库真的连上了**。正常应类似
+
+  ```json
+  "available": true,
+  "collections": ["knowledge_chunks_zhipu2048"],
+  "totalChunks": 2825
+  ```
+
+  `available: true` 但 `collections: []`、`totalChunks: 0` → 多半是
+  「索引是空的」或「请求被系统代理劫持」，见 8.5。
 
 **③ 走一遍核心流程**
 
@@ -477,8 +525,11 @@ $env:API_BASE='http://你的域名/api'
 | `client/` | `npm run check:build` | 检查构建产物（Tailwind 工具类、主题色覆盖） |
 | `client/` | `npm run check:e2e` | 无头浏览器端到端自检（需先启动 `npm run dev`） |
 | `client/` | `npm run screenshots` | 重新生成 `docs/screenshots` 下的截图 |
-| `server/` | `.\.venv\Scripts\python.exe -m uvicorn app.main:app --port 3000` | 启动后端（等价于 `start.ps1`，推荐用它避开 PS 5.1 编码问题） |
+| `server/` | `.\dev.cmd [--reindex] [--rebuild]` | **本机推荐**：起 Chroma + 后端；`--reindex` 重建索引，`--rebuild` 备份旧向量库 |
+| `server/` | `.\start-chroma.cmd` | 只启动 Chroma 服务（`-Rebuild` 先备份再重建） |
+| `server/` | `.\.venv\Scripts\python.exe -m uvicorn app.main:app --port 3000` | 只启动后端（等价于 `start.ps1`） |
 | `server/` | `.\start.ps1 [-Port 8000]` | 一键启动（自动建 venv、装依赖、生成 .env） |
+| `server/` | `.\.venv\Scripts\python.exe reindex_all.py` | 重建全部文档的向量索引（后端需停止，或使用服务模式） |
 | `server/` | `.\.venv\Scripts\python.exe preflight.py` | **环境预检**（依赖/配置/MySQL/Key/目录），不启动服务也能跑 |
 | `server/` | `.\.venv\Scripts\python.exe verify_capabilities.py` | 后端能力自检（解析/切片/向量检索/ORM） |
 | `server/` | `.\.venv\Scripts\python.exe tests\verify_teams.py` | 团队与密钥接口验收（需后端已启动，52 项） |
@@ -487,7 +538,7 @@ $env:API_BASE='http://你的域名/api'
 | `server/` | `.\.venv\Scripts\python.exe tests\verify_permissions.py` | 团队库与文档管理权限验收（18 项） |
 | `server/` | `.\.venv\Scripts\python.exe tests\verify_byok_deploy.py` | **上线验收**：用户自备 Key 是否真生效（18 项，不消耗额度） |
 | `server/` | `.\.venv\Scripts\python.exe tests\verify_upload_dedup.py` | 上传去重 + 批量删除验收（21 项） |
-| `server/` | `.\.venv\Scripts\python.exe -m pytest tests\test_units.py -q` | 纯单元测试（19 项，不连数据库，CI 同款） |
+| `server/` | `.\.venv\Scripts\python.exe -m pytest tests\test_units.py -q` | 纯单元测试（24 项，不连数据库，CI 同款） |
 | `server/` | `.\.venv\Scripts\python.exe cleanup_test_data.py` | 清理自动化测试留下的账号/团队（默认 dry-run，`--yes` 才执行） |
 | `server/` | `.\.venv\Scripts\python.exe prune_orphan_vectors.py` | 清理数据库已删但 Chroma 仍残留的切片（默认 dry-run） |
 | `server/` | `.\.venv\Scripts\python -m celery -A app.tasks.celery_app worker -l info` | 启动异步 worker（需 Redis） |
@@ -610,34 +661,43 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 > 该问题**只影响 Windows 本机开发**。生产部署在 Ubuntu 上用
 > `docker compose`，全程不涉及 PowerShell。
 
-### 7.5 文档处理失败：`Error in compaction: Failed to apply logs to the metadata segment`
+### 7.5 文档处理失败：`Error in compaction` / `Error loading hnsw index`
 
-这**不是 API Key 的问题**（向量化请求通常已 200 成功），而是 ChromaDB 自身缺陷：
-写入到一半被打断后，compactor 永久卡死，此后所有向量操作失败。
-（官方 issue [chroma-core/chroma#5366](https://github.com/chroma-core/chroma/issues/5366) 仍 open。）
+这两种报错都指向**向量库写入或读取失败**，但**先别急着删库重建** ——
+它们也可能是「请求被系统代理劫持」造成的假象（见 8.5）。
 
-**最常见诱因是「两个进程同时写同一个向量库」**：
-嵌入式模式下后端与重索引脚本共用一份 SQLite，同时写就会触发。
-
-正确做法是改用 **Chroma 服务模式**（本项目默认方案）：
+**第一步：先看日志里有没有 502**
 
 ```powershell
-# 终端 1：启动 Chroma 服务（-Rebuild 会先备份并重建卡死的库）
-cd server
-.\start-chroma.cmd -Rebuild
-
-# 终端 2：重建索引
-.\.venv\Scripts\python.exe reindex_all.py
-
-# 终端 3：启动后端
-.\start.cmd
+# 后端日志里出现下面这行 → 是代理问题，不是索引损坏
+502 Bad Gateway  http://127.0.0.1:8000/api/v2/auth/identity
 ```
 
-服务模式下 backend / 脚本都只是 HTTP 客户端，只有 Chroma 进程写文件，
-多进程安全；后端被杀或重启也不会损坏向量库。
+有 502 就去看 8.5；**没有** 502 才继续往下走。
 
-若已卡死且需要抢救：停掉后端 → `.\start-chroma.cmd -Rebuild` →
-`reindex_all.py` 重建索引（原始文件在 `server/data/uploads`，可完整重建）。
+**第二步：确认是不是「两个进程同时写同一个向量库」**
+
+这是 `Error in compaction: Failed to apply logs to the metadata segment` 的典型诱因
+（官方 issue [chroma-core/chroma#5366](https://github.com/chroma-core/chroma/issues/5366) 仍 open）。
+常见场景：既跑了 `dev.cmd`，又单独跑了 `start-chroma.cmd`；或后端重启过快，
+旧进程还没释放目录。
+
+规避方式：本项目默认用 **Chroma 服务模式**（`CHROMA_HOST` 非空），
+后端起服务、脚本都只是 HTTP 客户端，只有 Chroma 进程写文件。
+**不要同时开两个 Chroma 进程指向同一份 `data/chroma_db`。**
+
+**第三步：确认索引真的坏了 → 一键恢复**
+
+```powershell
+cd server
+.\dev.cmd --rebuild --reindex
+```
+
+它会：把旧库备份为 `chroma_db.broken-<时间戳>` → 建新库 → 启动 Chroma →
+重新索引全部文档（原始文件在 `server/data/uploads`，可完整重建）→ 启动后端。
+
+> 重建会消耗 embedding 额度，约等于「全部文档重新向量化一次」。
+> 演示前请预留几分钟，别在现场做这件事。
 
 ### 7.6 连通性自检
 
@@ -721,6 +781,45 @@ ChromaDB 1.5.x 的 Rust 绑定会写 `C:\Users\<用户>\.cache\chroma`（Linux �
 要真正实现，按 `app/api/auth.py` 里该函数的注释做三步即可：
 生成一次性带过期的令牌 → 通过 SMTP 投递 → 新增「凭令牌设置新密码」接口。
 
+### 8.5 「连接 Chroma 服务失败」/「打开向量集合失败」—— 先怀疑是系统代理
+
+**这是本项目最容易误判的一个坑，我们自己也踩了很久。**
+
+现象（互相矛盾、看起来像向量库坏了）：
+
+```
+连接 Chroma 服务失败（127.0.0.1:8000）
+打开向量集合失败
+502 Bad Gateway  http://127.0.0.1:8000/api/v2/auth/identity
+Error loading hnsw index（偶发，进一步误导）
+```
+
+**真正原因**：Windows 上开着 Clash / v2ray 之类（系统代理 `127.0.0.1:7897`）时，
+Python 的 `httpx` 默认 `trust_env=True`，会把**发往 `127.0.0.1:8000` 的请求也交给代理**。
+代理不认识这个目标，返回 `502 Bad Gateway` + 空响应体；
+chromadb 把空响应当异常内容抛出，最终报成「连接 Chroma 服务失败」。
+
+同一份数据、同一份代码，**加不加这条绕过：一个报 502，一个完全正常**。
+
+**代码已自动处理**：`server/app/services/vectorstore.py` 的 `_ensure_proxy_bypass()`
+会在连接 Chroma 前把目标地址、`127.0.0.1`、`localhost`、`::1` 合并进 `NO_PROXY`
+（只改本进程环境变量，不动系统设置）。**改动需重启后端才生效。**
+
+**如何自己确认**：
+
+```powershell
+# 1) 直接问 Chroma 是否真的活着（绕过代理）
+curl.exe --noproxy '*' -sS -o NUL -w "%{http_code}`n" http://127.0.0.1:8000/api/v2/heartbeat
+
+# 2) 对比「走代理」的结果
+curl.exe -x http://127.0.0.1:7897 -sS -o NUL -w "%{http_code}`n" http://127.0.0.1:8000/api/v2/heartbeat
+```
+
+第一条 `200`、第二条 `502` → 就是代理问题，向量库本身没问题，**不要删库重建**。
+
+**顺带**：`tests/verify_*.py` 这些脚本也遇到过同样问题（拿到空响应 →
+`JSONDecodeError` → 看起来像「接口挂了」），现已统一加上 NO_PROXY 绕过。
+
 ## 九、协作
 
 分支与 PR 流程见 [docs/collaboration.md](docs/collaboration.md)。简单说：**不要直推 `main`**（已受保护），在 `dec/test-upload` 或自己的功能分支上开发。
@@ -753,11 +852,17 @@ git push origin feat/你的功能
 
 | 范围 | 命令 | 期望 |
 | --- | --- | --- |
+| 后端单测 | `cd server && .\.venv\Scripts\python.exe -m pytest tests\test_units.py -q` | 24 passed |
+| 后端编译 | `cd server && .\.venv\Scripts\python.exe -m compileall -q app tests` | 退出码 0 |
 | 前端构建 | `cd client && npm run build` | 构建成功，无报错 |
 | 前端自检 | `cd client && npm run check:build` | Tailwind 与主题覆盖正常 |
 | 后端接口契约 | `npm run check:server`（根目录，需后端已启动） | 全部通过 |
 | 团队功能 | `cd server && .\.venv\Scripts\python.exe tests\verify_teams.py` | 52/52 |
 | 团队知识库 | `cd server && .\.venv\Scripts\python.exe tests\verify_team_kb.py` | 23/23 |
+| 权限收口 | `cd server && .\.venv\Scripts\python.exe tests\verify_permissions.py` | 18/18 |
+| 上传去重 / 批量删除 | `cd server && .\.venv\Scripts\python.exe tests\verify_upload_dedup.py` | 21/21 |
+| 清理逻辑 | `cd server && .\.venv\Scripts\python.exe tests\verify_cleanup.py` | 12/12 |
+| BYOK（上线前） | `cd server && .\.venv\Scripts\python.exe tests\verify_byok_deploy.py` | 18/18 |
 | 前端 e2e | `cd client && node scripts/e2e-teams.mjs` | 24/24 |
 
 ---
