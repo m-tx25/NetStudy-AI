@@ -5,6 +5,7 @@
 #   frontend      Nginx，唯一对外暴露 80，把 /api 反代给 backend
 #   backend       FastAPI，仅内网 8000
 #   celery_worker 复用 backend 镜像，跑 Celery worker（PDF 解析 + 向量化）
+#   chroma        独立向量库服务（**关键**，见 chroma 段的说明）
 #   redis         Celery 的 broker 与 result backend
 #   mysql         业务数据库（**必需**，见文末说明）
 #
@@ -14,6 +15,14 @@
 
 name: rag-qa
 
+# 日志轮转：不配置的话容器日志会无限增长，几个月就能把磁盘写满，
+# 而磁盘写满又会连带把 MySQL / Chroma 的写入搞坏。
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: '20m'
+    max-file: '3'
+
 services:
   # ------------------------------------------------------------------ MySQL
   # 这是你的规格里漏掉的第 5 个服务。
@@ -22,7 +31,10 @@ services:
   mysql:
     image: mysql:8.4
     container_name: rag-mysql
+    logging: *default-logging
     restart: unless-stopped
+    # InnoDB 能自恢复，但给足 60 秒可减少崩溃恢复的概率与耗时
+    stop_grace_period: 60s
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-chuangzhibei}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-chuangzhibei}
@@ -48,6 +60,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: rag-redis
+    logging: *default-logging
     restart: unless-stopped
     command: ['redis-server', '--appendonly', 'yes']
     volumes:
@@ -75,7 +88,13 @@ services:
   chroma:
     image: chromadb/chroma:1.5.9
     container_name: rag-chroma
+    logging: *default-logging
     restart: unless-stopped
+    # 【关键】默认只给 10 秒，超时直接 SIGKILL。
+    # 而 chromadb 只要在**写入过程中被强杀**，compactor 就会永久卡死
+    # （Error in compaction: Failed to apply logs to the metadata segment），
+    # 只能删库重建。给足 60 秒让它把手上的写入落完再退。
+    stop_grace_period: 60s
     environment:
       IS_PERSISTENT: 'TRUE'
       # 关闭匿名遥测：不向第三方发送任何数据
@@ -101,7 +120,10 @@ services:
       dockerfile: Dockerfile
     image: rag-backend:latest
     container_name: rag-backend
+    logging: *default-logging
     restart: unless-stopped
+    # 上传/解析请求可能还在跑，别 10 秒就强杀
+    stop_grace_period: 60s
     # 从 server/.env 读取模型 Key 等配置
     env_file:
       - ./server/.env
@@ -159,7 +181,10 @@ services:
       dockerfile: Dockerfile
     image: rag-backend:latest
     container_name: rag-celery
+    logging: *default-logging
     restart: unless-stopped
+    # worker 手上可能正在写向量，强杀会打断写入
+    stop_grace_period: 120s
     env_file:
       - ./server/.env
     environment:
@@ -215,6 +240,7 @@ services:
       dockerfile: Dockerfile
     image: rag-frontend:latest
     container_name: rag-frontend
+    logging: *default-logging
     restart: unless-stopped
     ports:
       # 只有前端对公网开放；backend / mysql / redis 都不暴露

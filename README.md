@@ -464,7 +464,64 @@ cd server
 `server\start.ps1` 亦可，但它在 **Windows PowerShell 5.1** 下可能因脚本中文编码
 （UTF-8 无 BOM）报「字符串缺少终止符」；遇到时用上面这条命令代替。
 
-### 7.4 连通性自检
+### 7.4 `无法加载文件 start.ps1，未对文件进行数字签名`（PSSecurityException）
+
+Windows 默认执行策略（`Restricted` / `AllSigned`）会拦截所有 `.ps1`：
+
+```
+.\start.ps1 : 无法加载文件 ...\start.ps1。未对文件 ... 进行数字签名。
++ FullyQualifiedErrorId : UnauthorizedAccess
+```
+
+**推荐用配套的 `.cmd` 包装器**（内部已加 `-ExecutionPolicy Bypass`，
+只对本次调用放开，不改系统全局设置）：
+
+```powershell
+cd server
+.\start.cmd            # 启动后端（等价于 start.ps1）
+.\start-chroma.cmd     # 启动本地 Chroma 服务
+```
+
+也可以临时放开当前窗口的策略（关掉窗口即恢复，**不需要管理员**）：
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\start.ps1
+```
+
+> 该问题**只影响 Windows 本机开发**。生产部署在 Ubuntu 上用
+> `docker compose`，全程不涉及 PowerShell。
+
+### 7.5 文档处理失败：`Error in compaction: Failed to apply logs to the metadata segment`
+
+这**不是 API Key 的问题**（向量化请求通常已 200 成功），而是 ChromaDB 自身缺陷：
+写入到一半被打断后，compactor 永久卡死，此后所有向量操作失败。
+（官方 issue [chroma-core/chroma#5366](https://github.com/chroma-core/chroma/issues/5366) 仍 open。）
+
+**最常见诱因是「两个进程同时写同一个向量库」**：
+嵌入式模式下后端与重索引脚本共用一份 SQLite，同时写就会触发。
+
+正确做法是改用 **Chroma 服务模式**（本项目默认方案）：
+
+```powershell
+# 终端 1：启动 Chroma 服务（-Rebuild 会先备份并重建卡死的库）
+cd server
+.\start-chroma.cmd -Rebuild
+
+# 终端 2：重建索引
+.\.venv\Scripts\python.exe reindex_all.py
+
+# 终端 3：启动后端
+.\start.cmd
+```
+
+服务模式下 backend / 脚本都只是 HTTP 客户端，只有 Chroma 进程写文件，
+多进程安全；后端被杀或重启也不会损坏向量库。
+
+若已卡死且需要抢救：停掉后端 → `.\start-chroma.cmd -Rebuild` →
+`reindex_all.py` 重建索引（原始文件在 `server/data/uploads`，可完整重建）。
+
+### 7.6 连通性自检
 
 前后端起来后，可一键验证链路（不依赖浏览器）：
 
