@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 from pathlib import Path
 
@@ -18,7 +19,13 @@ from app.api.knowledge_bases import refresh_counts
 from app.api.serializers import document_out
 from app.core.config import settings
 from app.models import Document, KnowledgeBase, now_utc
-from app.schemas import DocumentOut, DocumentUpdateIn, OkOut
+from app.schemas import (
+    BatchDeleteIn,
+    BatchDeleteOut,
+    DocumentOut,
+    DocumentUpdateIn,
+    OkOut,
+)
 from app.services import access, chunking, diagnostics, keyring, parser, vectorstore
 from app.tasks import dispatch_process_document
 from app.utils.ids import new_id
@@ -86,6 +93,25 @@ async def _ensure_document_manageable(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="团队知识库中只能操作自己上传的文档；负责人与管理员不受此限制",
+        )
+
+
+async def _cleanup_vectors(document_id: str) -> None:
+    """删除文档后清理它的向量。
+
+    必须在**事务提交之后**调用，且失败不能影响接口结果：
+    记录这时已经删掉了，若因为向量库暂时不可用而返回 500，
+    用户会以为没删成、反复重试。残留向量交给 `prune_orphan_vectors.py` 兜底。
+    """
+    try:
+        removed = await asyncio.to_thread(vectorstore.delete_document, document_id)
+        if removed:
+            logger.info("已清理文档 %s 的向量 %s 条", document_id, removed)
+    except Exception as exc:
+        logger.warning(
+            "清理文档 %s 的向量失败（记录已删除，向量待 prune 清理）：%s",
+            document_id,
+            exc,
         )
 
 
@@ -168,6 +194,9 @@ async def upload_document(
 
     written = 0
     limit = settings.max_upload_bytes
+    # 边写边算 SHA-256：用于「同一知识库内按内容去重」。
+    # 不额外读一遍文件，避免大文件二次 IO。
+    hasher = hashlib.sha256()
     try:
         with target.open("wb") as sink:
             while True:
@@ -182,6 +211,7 @@ async def upload_document(
                         status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                         detail=f"文件过大，已超出服务端限制（{settings.MAX_UPLOAD_SIZE_MB}MB）",
                     )
+                hasher.update(chunk)
                 sink.write(chunk)
     except HTTPException:
         raise
@@ -197,12 +227,37 @@ async def upload_document(
         target.unlink(missing_ok=True)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传的文件为空")
 
+    content_hash = hasher.hexdigest()
+
+    # ---- 内容去重：同一知识库里已有同样内容的文件就不再入库 ----
+    # 只按「同一知识库 + 内容哈希」判定：不同知识库各自保留一份是合理的
+    # （归属、密钥、检索范围都不同）。
+    # 已失败的记录不算命中 —— 用户重传往往就是为了重试失败的那份。
+    existing = (
+        await db.execute(
+            select(Document)
+            .where(Document.knowledge_base_id == base.id)
+            .where(Document.content_hash == content_hash)
+            .where(Document.status != "failed")
+            .order_by(Document.uploaded_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        target.unlink(missing_ok=True)
+        logger.info(
+            "上传去重命中：kb=%s hash=%s 复用文档 %s（新上传的文件已丢弃）",
+            base.id, content_hash[:12], existing.id,
+        )
+        return DocumentOut(**document_out(existing, duplicated=True))
+
     document = Document(
         id=document_id,
         knowledge_base_id=base.id,
         name=filename[:512],
         uploaded_by=user.id,
         stored_path=str(target),
+        content_hash=content_hash,
         size=written,
         chunks=0,
         status="processing",
@@ -313,6 +368,73 @@ async def _reindex_vectors(db: DbSession, document: Document) -> None:
         document.error = diagnostics.humanize_document_error(exc)[:2000]
 
 
+@router.post("/batch-delete", response_model=BatchDeleteOut)
+async def batch_delete_documents(
+    payload: BatchDeleteIn, user: CurrentUser, db: DbSession
+) -> BatchDeleteOut:
+    """批量删除文档。
+
+    逐条走与单条删除**完全相同**的权限判定（`_get_owned_document` +
+    `_ensure_document_manageable`），因此团队库成员只能删自己上传的，
+    负责人/管理员可删全部；无权限的条目会被跳过而不是让整批失败。
+
+    返回三类 id，便于前端精确提示：
+      deleted   已删除
+      forbidden 有权限查看但无权删除（非本人上传、也非管理员）
+      missing   不存在或无权查看（统一按不存在处理，不暴露存在性）
+    """
+    # 去重且保持顺序，避免前端重复勾选导致重复处理
+    ids = list(dict.fromkeys(payload.document_ids or []))
+    if not ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="未选择任何文档")
+    if len(ids) > 200:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="一次最多删除 200 个文档"
+        )
+
+    deleted: list[str] = []
+    forbidden: list[str] = []
+    missing: list[str] = []
+    stored_paths: list[str] = []
+    touched_kbs: set[str] = set()
+
+    for document_id in ids:
+        try:
+            document = await _get_owned_document(db, document_id, user.id)
+        except HTTPException:
+            missing.append(document_id)
+            continue
+        try:
+            await _ensure_document_manageable(db, document, user.id)
+        except HTTPException:
+            forbidden.append(document_id)
+            continue
+
+        touched_kbs.add(document.knowledge_base_id)
+        if document.stored_path:
+            stored_paths.append(document.stored_path)
+        await db.delete(document)
+        deleted.append(document_id)
+
+    if deleted:
+        await db.flush()
+        for kb_id in touched_kbs:
+            await refresh_counts(db, kb_id)
+        await db.commit()
+
+        # 向量与磁盘文件在提交后清理：删库失败不该让记录回滚
+        for document_id in deleted:
+            await _cleanup_vectors(document_id)
+        for stored_path in stored_paths:
+            await asyncio.to_thread(_remove_file, stored_path)
+
+    logger.info(
+        "批量删除完成：删除 %s，无权限 %s，不存在 %s",
+        len(deleted), len(forbidden), len(missing),
+    )
+    return BatchDeleteOut(deleted=deleted, forbidden=forbidden, missing=missing)
+
+
 @router.delete("/{document_id}", response_model=OkOut)
 async def delete_document(document_id: str, user: CurrentUser, db: DbSession) -> OkOut:
     document = await _get_owned_document(db, document_id, user.id)
@@ -326,10 +448,9 @@ async def delete_document(document_id: str, user: CurrentUser, db: DbSession) ->
     await refresh_counts(db, knowledge_base_id)
     await db.commit()
 
-    # 同步阻塞（Chroma 删除），丢线程池避免冻住事件循环
-    removed = await asyncio.to_thread(vectorstore.delete_document, document_id)
-    if removed:
-        logger.info("已清理文档 %s 的向量 %s 条", document_id, removed)
+    # 同步阻塞（Chroma 删除），丢线程池避免冻住事件循环；
+    # 失败只告警不影响结果（记录已删除）
+    await _cleanup_vectors(document_id)
 
     _remove_file(stored_path)
     return OkOut(ok=True)

@@ -97,6 +97,10 @@ class Document(Base):
     uploaded_by: Mapped[str] = mapped_column(String(64), default="", index=True)
     # 原始文件在磁盘上的相对路径
     stored_path: Mapped[str] = mapped_column(Text, default="")
+    # 文件内容的 SHA-256（十六进制小写）。同一知识库内按它去重：
+    # 重复上传同一份文件不会再产生第二份切片，否则检索时同一段内容会被召回两次、
+    # 引用里出现两条一模一样的来源。
+    content_hash: Mapped[str] = mapped_column(String(64), default="", index=True)
     size: Mapped[int] = mapped_column(Integer, default=0)
     # 切片数量：由 ChromaDB 统计回填（向量不在 MySQL 中）
     chunks: Mapped[int] = mapped_column(Integer, default=0)

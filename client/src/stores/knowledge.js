@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 
 import {
   createKnowledgeBase,
+  batchDeleteDocuments,
   deleteDocument,
   deleteKnowledgeBase,
   listDocuments,
@@ -250,6 +251,7 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     if (!baseId || !files?.length) return []
 
     let serverParsing = false // 后端是否把解析留到了后台
+    let duplicateCount = 0 // 内容重复被跳过的文件数
 
     for (const file of files) {
       const task = {
@@ -270,10 +272,20 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
         task.progress = 100
         task.status = 'done'
         task.error = document?.error || ''
-        documents.value.unshift(document)
-        // 同步模式（CELERY_TASK_ALWAYS_EAGER）下返回时已是 ready，无需轮询
-        if (document?.status === 'pending' || document?.status === 'processing') {
-          serverParsing = true
+
+        if (document?.duplicated) {
+          // 内容去重命中：后端返回的是**库里已有的那条记录**，没有新建、也不会重复向量化。
+          // 此时不能 unshift（会造成列表里出现两条同 id 的记录）。
+          task.duplicated = true
+          duplicateCount += 1
+          const index = documents.value.findIndex((item) => item.id === document.id)
+          if (index >= 0) documents.value[index] = { ...documents.value[index], ...document }
+        } else {
+          documents.value.unshift(document)
+          // 同步模式（CELERY_TASK_ALWAYS_EAGER）下返回时已是 ready，无需轮询
+          if (document?.status === 'pending' || document?.status === 'processing') {
+            serverParsing = true
+          }
         }
       } catch (error) {
         task.status = 'failed'
@@ -300,6 +312,21 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     await deleteDocument(id)
     documents.value = documents.value.filter((item) => item.id !== id)
     await loadBases()
+  }
+
+  /**
+   * 批量删除。后端可能只删掉其中一部分（无权限 / 已不存在），
+   * 因此这里**按返回的 deleted 列表**从本地状态移除，而不是乐观地全删，
+   * 避免界面显示已删除、实际服务端还在。
+   */
+  async function removeDocuments(ids) {
+    const result = await batchDeleteDocuments(ids)
+    const removed = new Set(result?.deleted || [])
+    if (removed.size) {
+      documents.value = documents.value.filter((item) => !removed.has(item.id))
+      await loadBases()
+    }
+    return result
   }
 
   async function toggleDocument(id, enabled) {
@@ -361,6 +388,7 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     uploadFiles,
     clearFinishedTasks,
     removeDocument,
+    removeDocuments,
     toggleDocument,
     reindex,
     reset,

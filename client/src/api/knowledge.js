@@ -65,6 +65,15 @@ export function deleteDocument(id) {
   return request.delete(`/documents/${id}`)
 }
 
+/**
+ * 批量删除文档。
+ * 后端逐条判定权限，返回 { deleted, forbidden, missing } 三类 id。
+ */
+export function batchDeleteDocuments(documentIds) {
+  if (isMockMode) return mockKnowledge.deleteDocument(documentIds?.[0])
+  return request.post('/documents/batch-delete', { documentIds })
+}
+
 /** 重新解析 / 重新向量化 */
 export function reindexDocument(id) {
   if (isMockMode) return mockKnowledge.reindexDocument(id)

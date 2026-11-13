@@ -1,14 +1,34 @@
 <script setup>
+import { computed, ref } from 'vue'
 import { Refresh, Delete, Document } from '@element-plus/icons-vue'
 
 import { formatBytes, formatDateTime } from '@/utils/format'
 
-defineProps({
+const props = defineProps({
   documents: { type: Array, default: () => [] },
   loading: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['remove', 'reindex', 'toggle'])
+const emit = defineEmits(['remove', 'reindex', 'toggle', 'batch-remove'])
+
+// 勾选的行。用 id 数组而不是 row 对象，避免刷新后引用失效。
+const selectedIds = ref([])
+
+const selectedCount = computed(() => selectedIds.value.length)
+
+function onSelectionChange(rows) {
+  selectedIds.value = (rows || []).map((row) => row.id)
+}
+
+/** 批量删除：父组件负责确认与调用接口，这里只把选中的 id 抛出去 */
+function onBatchRemove() {
+  if (!selectedIds.value.length) return
+  emit('batch-remove', [...selectedIds.value])
+}
+
+function clearSelection() {
+  selectedIds.value = []
+}
 
 const statusMap = {
   ready: { label: '已就绪', type: 'success' },
@@ -37,13 +57,27 @@ function typeColor(name = '') {
 </script>
 
 <template>
+  <!-- 批量操作条：只在勾选后出现，避免平时占地方 -->
+  <div
+    v-if="selectedCount"
+    class="mb-2 flex items-center gap-3 rounded-lg border app-border px-3 py-2"
+  >
+    <span class="text-xs app-text">已选 {{ selectedCount }} 个文档</span>
+    <el-button size="small" text @click="clearSelection">清空选择</el-button>
+    <el-button size="small" type="danger" plain :icon="Delete" @click="onBatchRemove">
+      批量删除
+    </el-button>
+  </div>
+
   <el-table
     v-loading="loading"
     :data="documents"
     style="width: 100%"
     row-key="id"
     :header-cell-style="{ fontWeight: '600' }"
+    @selection-change="onSelectionChange"
   >
+    <el-table-column type="selection" width="42" reserve-selection />
     <el-table-column label="文档" min-width="260">
       <template #default="{ row }">
         <div class="flex items-center gap-2.5 py-1">

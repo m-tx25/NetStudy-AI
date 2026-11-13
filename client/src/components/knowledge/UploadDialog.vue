@@ -77,6 +77,7 @@ function progressStatus(task) {
 }
 
 function statusText(task) {
+  if (task.duplicated) return '已存在（跳过）'
   if (task.status === 'done') return '已完成'
   if (task.status === 'failed') return '失败'
   if (task.status === 'processing') return '解析中…'
@@ -101,8 +102,14 @@ async function submit() {
   try {
     await knowledgeStore.uploadFiles(props.knowledgeBaseId, [...selectedFiles.value])
     const failed = knowledgeStore.uploadTasks.filter((task) => task.status === 'failed').length
+    // 内容重复的文件后端不会新建记录（同一知识库内按 SHA-256 去重），如实提示
+    const duplicated = knowledgeStore.uploadTasks.filter((task) => task.duplicated).length
     if (failed) ElMessage.warning(`有 ${failed} 个文件上传失败，请重试`)
-    else ElMessage.success('上传完成，文档已进入解析队列')
+    else if (duplicated) {
+      ElMessage.warning(
+        `${duplicated} 个文件与知识库中已有文档内容相同，已跳过（不会重复入库）`,
+      )
+    } else ElMessage.success('上传完成，文档已进入解析队列')
     emit('uploaded')
     resetFiles()
     visible.value = false
