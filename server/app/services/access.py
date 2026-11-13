@@ -19,6 +19,11 @@ from app.models import KnowledgeBase, TeamMember
 OWNER_USER = "user"
 OWNER_TEAM = "team"
 
+# 能对「团队」本身做管理动作的角色。
+# 注意：普通成员可以读写团队知识库（上传、检索），但**不能删除或改名整个库**，
+# 否则任何成员一次误操作就能把全团队的资料清空。
+TEAM_MANAGER_ROLES = ("owner", "admin")
+
 
 async def member_team_ids(db: AsyncSession, user_id: str) -> list[str]:
     """用户所在的团队 id 列表。"""
@@ -70,6 +75,43 @@ def accessible_condition(user_id: str, team_ids: list[str]):
             KnowledgeBase.owner_id.in_(team_ids),
         ),
     )
+
+
+async def can_manage_kb(
+    db: AsyncSession, base: KnowledgeBase, user_id: str
+) -> bool:
+    """能否对该知识库做「管理动作」（改名、删除整库）。
+
+    与 merely 可访问不同：
+      个人库 → 本人可以
+      团队库 → 只有 owner / admin 可以，普通成员不行
+    """
+    if (base.owner_type or OWNER_USER) == OWNER_TEAM:
+        role = await team_role(db, base.owner_id, user_id)
+        return role in TEAM_MANAGER_ROLES
+    return base.owner_id == user_id
+
+
+async def can_manage_document(
+    db: AsyncSession, kb: KnowledgeBase, document, user_id: str
+) -> bool:
+    """能否管理某个文档（改名、启停、删除）。
+
+    规则：
+      个人库        → 本人可以
+      团队库 · 管理员 → 可以管理该团队下的任意文档
+      团队库 · 成员   → 只能管理**自己上传的**文档
+                        （否则任何成员都能逐条删光大家的资料，
+                         那与「直接删整库」没有实质区别）
+    """
+    if (kb.owner_type or OWNER_USER) != OWNER_TEAM:
+        return kb.owner_id == user_id
+    if await can_manage_kb(db, kb, user_id):
+        return True
+    uploaded_by = getattr(document, "uploaded_by", "") or ""
+    # 历史文档的 uploaded_by 可能为空（补列时回填成 ''），此时只认管理员，
+    # 避免「谁都能认领」的歧义。
+    return bool(uploaded_by) and uploaded_by == user_id
 
 
 async def get_accessible(
