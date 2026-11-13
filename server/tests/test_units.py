@@ -107,3 +107,134 @@ def test_default_secret_detection(monkeypatch) -> None:
 def test_upsert_batch_is_reasonably_small() -> None:
     """批次调小是为了降低 chromadb compactor 被打断的概率（见 config 注释）。"""
     assert 1 <= settings.CHROMA_UPSERT_BATCH <= 32
+
+
+# ------------------------------------------------- 向量库连接自愈（回归保护）
+def test_connection_error_detection() -> None:
+    """区分「连不上」与「集合不存在」——这个判定错了会导致计数恒 0。"""
+    from app.services import vectorstore
+
+    assert vectorstore._looks_like_connection_error(
+        RuntimeError('All connection attempts failed')
+    )
+    assert vectorstore._looks_like_connection_error(
+        RuntimeError('Server disconnected without sending a response')
+    )
+    assert not vectorstore._looks_like_connection_error(
+        RuntimeError('Collection knowledge_chunks_x does not exist')
+    )
+
+
+def test_call_with_reset_recovers_once(monkeypatch) -> None:
+    """连接断了要丢弃客户端重连一次，而不是一直返回空结果。"""
+    from app.services import vectorstore
+
+    class Broken:
+        def get_collection(self, name):
+            raise RuntimeError('connection closed by peer')
+
+    class Good:
+        def get_collection(self, name):
+            return f'ok:{name}'
+
+    seq = [Broken(), Good()]
+    monkeypatch.setattr(
+        vectorstore, 'get_client', lambda: seq.pop(0) if len(seq) > 1 else seq[0]
+    )
+
+    assert vectorstore._call_with_reset(lambda c: c.get_collection('x')) == 'ok:x'
+
+
+def test_call_with_reset_does_not_retry_business_errors(monkeypatch) -> None:
+    """业务错误（如集合不存在）不该触发重连，否则会掩盖真实原因。"""
+    from app.services import vectorstore
+
+    class Nope:
+        def get_collection(self, name):
+            raise ValueError('collection does not exist')
+
+    monkeypatch.setattr(vectorstore, 'get_client', lambda: Nope())
+
+    with pytest.raises(ValueError):
+        vectorstore._call_with_reset(lambda c: c.get_collection('x'))
+
+
+def test_existing_collections_propagates_connection_error(monkeypatch) -> None:
+    """连接类错误必须往外抛，不能被当成「没有集合」吞掉。
+
+    这正是线上表现「health 里 collections 为空、检索 0 条」的根因：
+    原实现 `except Exception: continue` 把连接失败也跳过了。
+    """
+    from app.services import vectorstore
+
+    class Broken:
+        def get_collection(self, name):
+            raise RuntimeError('connection reset by peer')
+
+    monkeypatch.setattr(vectorstore, 'get_client', lambda: Broken())
+
+    with pytest.raises(RuntimeError):
+        vectorstore._existing_collections()
+
+
+# ------------------------------------------------- 回答正文里的「无依据」标注
+def test_strip_leading_banner_removes_marker() -> None:
+    """历史消息里的标注要剥掉，否则模型下一轮会跟着复读（实测出现两次）。"""
+    from app.rag import prompts
+
+    body = 'CAPWAP 是一种无线接入点控制协议。'
+    assert prompts.strip_leading_banner(prompts.FALLBACK_BANNER + body) == body
+    # 剥两层也算对：连续复读后正文开头可能叠了多条标注
+    assert prompts.strip_leading_banner(prompts.FALLBACK_BANNER * 2 + body) == body
+
+
+def test_strip_leading_banner_keeps_normal_quotes() -> None:
+    """正文中间的普通引用块不能被误删。"""
+    from app.rag import prompts
+
+    text = '> 这是引用原文\n\n' + '结论如下。'
+    assert prompts.strip_leading_banner(text) == text
+
+
+def test_weak_banner_mentions_thresholds() -> None:
+    """「召回了但不够相关」的文案要和「完全没召回」区分开。"""
+    from app.rag import prompts
+
+    weak = prompts.FALLBACK_BANNER_WEAK.format(
+        retrieved=5, top_score=0.76, lex=3, strong=0.85
+    )
+    assert '检索到 5 条' in weak
+    assert '0.76' in weak
+    assert '相关度都不足' in weak
+    assert '未检索到' not in weak
+
+
+# --------------------------------------------------- 启动预热（不能拖垮服务）
+def test_warmup_swallows_errors(monkeypatch) -> None:
+    """预热失败（没配 Key / 向量库不可用）绝不能影响启动。"""
+    import asyncio
+
+    from app import main as app_main
+    from app.services import vectorstore
+
+    def boom(*args, **kwargs):
+        raise RuntimeError('向量库不可用')
+
+    monkeypatch.setattr(vectorstore, 'search', boom)
+
+    # 不应抛异常
+    asyncio.run(app_main._warmup_connections())
+
+
+def test_warmup_uses_real_search_path() -> None:
+    """预热必须走 search()，而不是只 embed 一次。
+
+    实测：只预热 embed_query 时，首个真实请求仍会再冷 8 秒
+    （检索路径要打开集合、做混合检索）。
+    """
+    import inspect
+
+    from app import main as app_main
+
+    source = inspect.getsource(app_main._warmup_connections)
+    assert 'vectorstore.search' in source

@@ -57,9 +57,20 @@ async def load_history(
         )
     ).scalars().all()
 
-    # 倒序取出后反转回正序；跳过生成失败或内容为空的回答
+    # 倒序取出后反转回正序；跳过生成失败或内容为空的回答。
+    # assistant 内容要先剥掉「无依据」标注：那段标注是服务端加的，
+    # 留在记忆里会让模型下一轮跟着复读（实测同一条回答出现两次标注）。
     ordered = list(reversed(rows))
-    return [(message.role, message.content) for message in ordered if message.content.strip()]
+    return [
+        (
+            message.role,
+            prompts.strip_leading_banner(message.content)
+            if message.role == "assistant"
+            else message.content,
+        )
+        for message in ordered
+        if message.content.strip()
+    ]
 
 
 async def _conversation_kb_ids(db: AsyncSession, conversation_id: str) -> list[str]:
@@ -249,15 +260,25 @@ async def stream_answer(
         chunks = []
 
     # ---------- 5. 选择生成模型与作答模式 ----------
-    selected_model = llm.resolve_model(model_id)
-
-    # 生成用谁的密钥：与向量化同一套作用域规则
-    # （团队库用团队 Key → 个人库用本人 Key → 服务端 .env 兜底）。
-    # 只有归属方**自配**了 Key 才覆盖，否则保留服务端模型配置不动。
-    resolved_chat = await keyring.resolve_chat_key(
-        db, team_id=embed_team_id, user_id=None if embed_team_id else user.id
+    # 前端显式选了模型（user:<keyId> / server:<id>）就以选择为准；
+    # 解析不出（id 非法 / 密钥已停用 / 不属于本人）再退回服务端默认模型。
+    explicit_model = await keyring.resolve_model_config(
+        db, model_id, user_id=user.id, team_ids=team_ids
     )
-    if resolved_chat.source in ("team", "user") and resolved_chat.usable:
+    selected_model = explicit_model or llm.resolve_model(model_id)
+
+    # 生成用谁的密钥：团队库优先团队 Key，**团队没配时用提问者自己的 Key 兜底**，
+    # 个人库/无库用本人 Key，最后才回落到服务端 .env（旧版团队库会把个人 Key 直接跳过，
+    # 于是一选团队库就报「未配置大模型」）。
+    # 但用户明确选了一个「带密钥」的模型时，尊重该选择，不再按归属覆盖。
+    resolved_chat = await keyring.resolve_chat_key(
+        db, team_id=embed_team_id, user_id=user.id
+    )
+    if (
+        not (explicit_model is not None and explicit_model.is_configured)
+        and resolved_chat.source in ("team", "user")
+        and resolved_chat.usable
+    ):
         selected_model = replace(
             selected_model,
             api_key=resolved_chat.secret,
@@ -337,9 +358,21 @@ async def stream_answer(
             question, context_chunks, history, grounded=grounded
         )
         if not grounded:
-            # 标注由服务端直接下发，不依赖模型自觉 —— 保证用户一定看得到
-            collected.append(prompts.FALLBACK_BANNER)
-            yield {"type": "delta", "content": prompts.FALLBACK_BANNER}
+            # 标注由服务端直接下发，不依赖模型自觉 —— 保证用户一定看得到。
+            # 两种情况文案不同：
+            #   chunks 为空 → 真的没召回到（多半没索引 / 没上传 / 未参与检索）
+            #   chunks 非空 → 召回了但被相关性门槛过滤（换问法更有效）
+            if chunks:
+                banner = prompts.FALLBACK_BANNER_WEAK.format(
+                    retrieved=len(chunks),
+                    top_score=max(chunk.score for chunk in chunks),
+                    lex=settings.RAG_MIN_LEXICAL_SCORE,
+                    strong=settings.RAG_STRONG_SCORE,
+                )
+            else:
+                banner = prompts.FALLBACK_BANNER
+            collected.append(banner)
+            yield {"type": "delta", "content": banner}
 
         try:
             async for piece in llm.stream_chat(

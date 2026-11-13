@@ -412,6 +412,55 @@ $key = -join ((1..64) | ForEach-Object { '0123456789abcdef'[(Get-Random -Max 16)
 - **不存在**「必须先配 LLM Key 才能进界面」的限制：没配 Key 时问答走原文摘录模式，
   其余功能（登录、知识库、上传、团队、引用溯源）全部正常。
 
+### 4.8 上线前自检：用户用自己的 API Key（BYOK）
+
+线上推荐让**用户/团队各自配置自己的 Key**，服务端不承担所有人的调用费用。
+
+**优先级（代码见 `server/app/services/keyring.py`）**：
+
+```
+团队密钥  →  个人密钥  →  服务端 .env
+```
+
+- 查询**团队知识库**时优先用团队 Key（费用归团队，且不会跨团队串用）；
+- 查询**个人知识库**时优先用该用户自己的 Key；
+- 都没有才回落到 `server/.env`。
+
+**配置入口（前端已实现）**：
+
+| 作用域 | 路径 |
+| --- | --- |
+| 个人 | 「设置 → API 密钥」 |
+| 团队 | 「团队 → 团队设置 → 团队 API 密钥」（需负责人/管理员） |
+
+密钥用 Fernet 加密存库（密钥由 `SECRET_KEY` 派生），接口只返回掩码，保存后无法查看明文。
+
+**上线后一键验证**（用「假 Key」证明「真生效」，不消耗额度）：
+
+```powershell
+cd server
+$env:API_BASE='http://你的域名/api'
+.\.venv\Scripts\python.exe tests\verify_byok_deploy.py
+```
+
+它验证 18 项，核心逻辑是：给用户配一个**格式合法但无效**的 Key，
+若系统仍能正常回答 → 说明偷偷用了服务端 Key（不通过）；
+若报「鉴权失败」 → 说明确实用了用户自己的 Key（通过）。覆盖：
+
+- Key 增删改查 + 返回值脱敏（不含明文）
+- 用户 Key 优先于服务端 Key（生成 + 向量化两条路径）
+- 不同用户之间不串用
+- 删除 Key 后正确回落到服务端 Key
+- 团队 Key 优先于用户 Key
+- 无效 Key 导致向量化失败，且失败原因指向「鉴权」而非「没检索到」
+
+> ⚠️ **换 `SECRET_KEY` 会让已存的所有 Key 无法解密**（见 4.6.1）。
+> 用户会看到「未配置 Key」的提示，需要重新填写 —— 这是预期行为。
+>
+> ⚠️ 如果服务端**完全没配** Key，又没用户在界面配，则向量化退回内置离线哈希、
+> 回答退化为原文摘录：功能能跑，但检索质量与生成质量都会明显下降。
+> 演示环境建议至少保留一个服务端 Key 兜底。
+
 ## 五、常用命令
 
 | 位置 | 命令 | 说明 |
@@ -436,7 +485,8 @@ $key = -join ((1..64) | ForEach-Object { '0123456789abcdef'[(Get-Random -Max 16)
 | `server/` | `.\.venv\Scripts\python.exe tests\verify_team_kb.py` | 团队知识库与检索验收（23 项） |
 | `server/` | `.\.venv\Scripts\python.exe tests\verify_cleanup.py` | 删除时向量与文件清理验收（12 项） |
 | `server/` | `.\.venv\Scripts\python.exe tests\verify_permissions.py` | 团队库与文档管理权限验收（18 项） |
-| `server/` | `.\.venv\Scripts\python.exe -m pytest tests\test_units.py -q` | 纯单元测试（15 项，不连数据库，CI 同款） |
+| `server/` | `.\.venv\Scripts\python.exe tests\verify_byok_deploy.py` | **上线验收**：用户自备 Key 是否真生效（18 项，不消耗额度） |
+| `server/` | `.\.venv\Scripts\python.exe -m pytest tests\test_units.py -q` | 纯单元测试（19 项，不连数据库，CI 同款） |
 | `server/` | `.\.venv\Scripts\python.exe cleanup_test_data.py` | 清理自动化测试留下的账号/团队（默认 dry-run，`--yes` 才执行） |
 | `server/` | `.\.venv\Scripts\python.exe prune_orphan_vectors.py` | 清理数据库已删但 Chroma 仍残留的切片（默认 dry-run） |
 | `server/` | `.\.venv\Scripts\python -m celery -A app.tasks.celery_app worker -l info` | 启动异步 worker（需 Redis） |
