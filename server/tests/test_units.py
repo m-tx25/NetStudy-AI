@@ -89,9 +89,19 @@ def test_new_id_has_prefix_and_is_unique() -> None:
 
 
 # --------------------------------------------------------------- 配置校验
-def test_default_secret_detected() -> None:
-    """CI / 本地默认配置下应识别为「未更换默认密钥」。"""
+def test_default_secret_detection(monkeypatch) -> None:
+    """验证「是否仍用默认密钥」的判定逻辑。
+
+    这里直接改配置值来判断，**不依赖运行环境**：
+    CI 会注入自定义 SECRET_KEY，若断言「当前一定是默认值」就会误报。
+    """
+    from app.core.config import DEFAULT_SECRET_KEY
+
+    monkeypatch.setattr(settings, 'SECRET_KEY', DEFAULT_SECRET_KEY)
     assert settings.using_default_secret is True
+
+    monkeypatch.setattr(settings, 'SECRET_KEY', 'a' * 64)
+    assert settings.using_default_secret is False
 
 
 def test_upsert_batch_is_reasonably_small() -> None:

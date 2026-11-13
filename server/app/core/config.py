@@ -11,6 +11,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 
+# 仓库内置的开发用默认密钥。它是公开的：任何人都能据此伪造 JWT、
+# 解开已存的 API 密钥。抽成常量是为了让「默认值」与「判定逻辑」共用一处，
+# 避免两处硬编码字符串将来不一致（比如只改了一处，判定就失效了）。
+DEFAULT_SECRET_KEY = "dev-only-secret-change-me-in-production"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -55,7 +60,7 @@ class Settings(BaseSettings):
 
     # ---------------- 鉴权 ----------------
     # 生产环境务必用 `openssl rand -hex 32` 生成并写进 .env
-    SECRET_KEY: str = "dev-only-secret-change-me-in-production"
+    SECRET_KEY: str = DEFAULT_SECRET_KEY
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 天
 
@@ -68,10 +73,7 @@ class Settings(BaseSettings):
           - API 密钥的加密密钥也由它派生，等于所有人用同一把钥匙。
         启动时会据此告警，提示尽快替换。
         """
-        return self.SECRET_KEY.strip() in (
-            "",
-            "dev-only-secret-change-me-in-production",
-        )
+        return self.SECRET_KEY.strip() in ("", DEFAULT_SECRET_KEY)
 
     # ---------------- 上传 ----------------
     # 与前端 client/src/config/index.js 的 UPLOAD_LIMITS.maxSizeMB 保持一致
