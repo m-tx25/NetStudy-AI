@@ -64,9 +64,34 @@ function typeColor(name = '') {
       </template>
     </el-table-column>
 
-    <el-table-column label="解析状态" width="120">
+    <el-table-column label="解析状态" width="150">
       <template #default="{ row }">
-        <el-tag :type="statusOf(row.status).type" size="small" effect="light" round>
+        <!-- 失败时把后端给出的原因显示出来：鼠标悬停看详情，点「查看原因」看完整说明 -->
+        <el-popover
+          v-if="row.status === 'failed' && row.error"
+          placement="top-start"
+          :width="420"
+          trigger="click"
+          popper-class="doc-error-popover"
+        >
+          <template #reference>
+            <span class="inline-flex items-center gap-1">
+              <el-tag type="danger" size="small" effect="light" round>失败</el-tag>
+              <el-button link type="danger" size="small">原因</el-button>
+            </span>
+          </template>
+          <div class="text-xs leading-5 whitespace-pre-wrap break-words text-[--el-text-color-primary]">
+            {{ row.error }}
+          </div>
+        </el-popover>
+
+        <el-tag
+          v-else
+          :type="statusOf(row.status).type"
+          size="small"
+          effect="light"
+          round
+        >
           {{ statusOf(row.status).label }}
         </el-tag>
       </template>
