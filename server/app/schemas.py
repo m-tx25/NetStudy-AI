@@ -132,11 +132,28 @@ class DocumentOut(CamelModel):
     uploaded_at: str | None = None
     # 前端未使用，便于排查解析失败原因
     error: str = ""
+    # 上传去重：本次上传的文件在该知识库里已存在，返回的是**已有那条记录**，
+    # 不会新建、也不会重复向量化。前端据此提示「已存在，已跳过」。
+    duplicated: bool = False
 
 
 class DocumentUpdateIn(CamelModel):
     name: str | None = None
     enabled: bool | None = None
+
+
+class BatchDeleteIn(CamelModel):
+    """批量删除文档。一次最多 200 个，避免单请求过大。"""
+
+    document_ids: list[str]
+
+
+class BatchDeleteOut(CamelModel):
+    """逐条结果：删掉了哪些、哪些无权限、哪些不存在。"""
+
+    deleted: list[str]
+    forbidden: list[str]
+    missing: list[str]
 
 
 # --------------------------------------------------------------------------

@@ -170,6 +170,37 @@ async function removeDocument(row) {
   }
 }
 
+/**
+ * 批量删除：后端逐条判定权限，返回三类结果。
+ * 这里把「删了几个 / 几个没权限 / 几个不存在」如实告诉用户，
+ * 而不是笼统地说「删除成功」——团队成员删到别人的文档时最容易困惑。
+ */
+async function removeDocuments(ids) {
+  if (!ids.length) return
+  try {
+    await ElMessageBox.confirm(
+      `确定删除选中的 ${ids.length} 个文档吗？删除后不可恢复。`,
+      '批量删除',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  try {
+    const result = await knowledgeStore.removeDocuments(ids)
+    const deleted = result?.deleted?.length || 0
+    const forbidden = result?.forbidden?.length || 0
+    const missing = result?.missing?.length || 0
+    const parts = [`已删除 ${deleted} 个`]
+    if (forbidden) parts.push(`${forbidden} 个无权限（非本人上传）`)
+    if (missing) parts.push(`${missing} 个不存在`)
+    if (deleted) ElMessage.success(parts.join('，'))
+    else ElMessage.warning(parts.join('，'))
+  } catch (error) {
+    notifyError(error, '批量删除失败')
+  }
+}
+
 async function reindex(row) {
   ElMessage.info(`正在重新解析「${row.name}」…`)
   const updated = await knowledgeStore.reindex(row.id)
@@ -375,6 +406,7 @@ function goChat() {
               :documents="documents"
               :loading="knowledgeStore.documentsLoading"
               @remove="removeDocument"
+              @batch-remove="removeDocuments"
               @reindex="reindex"
               @toggle="toggleDocument"
             />

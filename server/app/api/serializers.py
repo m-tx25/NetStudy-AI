@@ -39,7 +39,7 @@ def knowledge_base_out(
     }
 
 
-def document_out(document: Document) -> dict:
+def document_out(document: Document, *, duplicated: bool = False) -> dict:
     return {
         "id": document.id,
         "knowledgeBaseId": document.knowledge_base_id,
@@ -50,6 +50,8 @@ def document_out(document: Document) -> dict:
         "enabled": bool(document.enabled),
         "uploadedAt": iso(document.uploaded_at),
         "error": document.error or "",
+        # 上传去重命中时为 True：返回的是库里已有的那条记录
+        "duplicated": duplicated,
     }
 
 

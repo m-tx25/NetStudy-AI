@@ -486,6 +486,7 @@ $env:API_BASE='http://你的域名/api'
 | `server/` | `.\.venv\Scripts\python.exe tests\verify_cleanup.py` | 删除时向量与文件清理验收（12 项） |
 | `server/` | `.\.venv\Scripts\python.exe tests\verify_permissions.py` | 团队库与文档管理权限验收（18 项） |
 | `server/` | `.\.venv\Scripts\python.exe tests\verify_byok_deploy.py` | **上线验收**：用户自备 Key 是否真生效（18 项，不消耗额度） |
+| `server/` | `.\.venv\Scripts\python.exe tests\verify_upload_dedup.py` | 上传去重 + 批量删除验收（21 项） |
 | `server/` | `.\.venv\Scripts\python.exe -m pytest tests\test_units.py -q` | 纯单元测试（19 项，不连数据库，CI 同款） |
 | `server/` | `.\.venv\Scripts\python.exe cleanup_test_data.py` | 清理自动化测试留下的账号/团队（默认 dry-run，`--yes` 才执行） |
 | `server/` | `.\.venv\Scripts\python.exe prune_orphan_vectors.py` | 清理数据库已删但 Chroma 仍残留的切片（默认 dry-run） |
