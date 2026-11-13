@@ -9,13 +9,14 @@
     .\.venv\Scripts\python.exe _test_team_e2e.py
 """
 import json
+import os
 import sys
 import time
 import uuid
 
 import httpx
 
-BASE = 'http://127.0.0.1:3000/api'
+BASE = os.environ.get('API_BASE', 'http://127.0.0.1:3000/api')
 
 results = []
 

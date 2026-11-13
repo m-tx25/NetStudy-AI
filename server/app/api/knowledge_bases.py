@@ -174,6 +174,14 @@ async def update_knowledge_base(
 ) -> KnowledgeBaseOut:
     base = await _get_owned(db, knowledge_base_id, user.id)
 
+    # 改名 / 改描述属于管理动作：团队库只允许负责人与管理员。
+    # 普通成员能读写库里的内容，但不该改整个库的元信息。
+    if not await access.can_manage_kb(db, base, user.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="只有团队负责人或管理员可以修改团队知识库",
+        )
+
     if payload.name is not None:
         name = payload.name.strip()
         if not name:
@@ -198,6 +206,15 @@ async def delete_knowledge_base(
     knowledge_base_id: str, user: CurrentUser, db: DbSession
 ) -> OkOut:
     base = await _get_owned(db, knowledge_base_id, user.id)
+
+    # 【安全】此前这里只校验「是不是团队成员」，导致**任何普通成员**
+    # 直接调 API 就能删掉整个团队知识库（连同全部文档与向量）。
+    # 界面上虽然藏了按钮，但接口本身必须拦。
+    if not await access.can_manage_kb(db, base, user.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="只有团队负责人或管理员可以删除团队知识库",
+        )
 
     # 先把物理文件路径取出来：删库之后 documents 记录就查不到了
     stored_paths = [

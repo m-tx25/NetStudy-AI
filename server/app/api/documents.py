@@ -63,6 +63,32 @@ async def _get_owned_document(db: DbSession, document_id: str, user_id: str) -> 
     return document
 
 
+async def _ensure_document_manageable(
+    db: DbSession, document: Document, user_id: str
+) -> None:
+    """改名 / 启停 / 删除属于管理动作。
+
+    规则见 access.can_manage_document：
+      个人库            → 本人
+      团队库 · 管理员    → 任意文档
+      团队库 · 普通成员  → 只能是自己上传的文档
+    """
+    kb = (
+        await db.execute(
+            select(KnowledgeBase).where(KnowledgeBase.id == document.knowledge_base_id)
+        )
+    ).scalar_one_or_none()
+    if kb is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="知识库不存在"
+        )
+    if not await access.can_manage_document(db, kb, document, user_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="团队知识库中只能操作自己上传的文档；负责人与管理员不受此限制",
+        )
+
+
 def _remove_file(path: str) -> None:
     if not path:
         return
@@ -210,6 +236,7 @@ async def update_document(
     document_id: str, payload: DocumentUpdateIn, user: CurrentUser, db: DbSession
 ) -> DocumentOut:
     document = await _get_owned_document(db, document_id, user.id)
+    await _ensure_document_manageable(db, document, user.id)
 
     if payload.name is not None:
         name = payload.name.strip()
@@ -289,6 +316,7 @@ async def _reindex_vectors(db: DbSession, document: Document) -> None:
 @router.delete("/{document_id}", response_model=OkOut)
 async def delete_document(document_id: str, user: CurrentUser, db: DbSession) -> OkOut:
     document = await _get_owned_document(db, document_id, user.id)
+    await _ensure_document_manageable(db, document, user.id)
     knowledge_base_id = document.knowledge_base_id
     stored_path = document.stored_path
 

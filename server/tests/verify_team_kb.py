@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 """团队知识库端到端测试：成员创建团队库、成员都能看到并上传、非成员看不到。"""
 import json
+import os
 import sys
 import time
 import uuid
 
 import httpx
 
-BASE = 'http://127.0.0.1:3000/api'
+BASE = os.environ.get('API_BASE', 'http://127.0.0.1:3000/api')
 results = []
 
 
