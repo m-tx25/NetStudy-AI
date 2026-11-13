@@ -3,6 +3,7 @@
 与前端 client/src/api/auth.js 一一对应。
 """
 
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, status
@@ -32,6 +33,8 @@ from app.schemas import (
 from app.utils.ids import new_id
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+logger = logging.getLogger(__name__)
 
 
 async def _find_by_username(db: DbSession, username: str) -> User | None:
@@ -158,15 +161,20 @@ async def change_password(
 
 @router.post("/forgot-password", response_model=OkOut)
 async def forgot_password(payload: ForgotPasswordIn) -> OkOut:
-    """发送重置邮件（**当前为桩实现**）。
+    """密码重置 —— **当前未实现**，明确返回 501。
 
-    无论账号是否存在都返回成功，避免暴露注册状态（与前端提示一致）。
+    为什么不返回「成功」：之前这里假装成功（`return OkOut(ok=True)`），
+    前端会提示「重置邮件已发送，请查收」，但实际既不发邮件也不改密码。
+    用户（尤其演示/评审场景）等不到邮件，体验比「明确告知未开放」更差，
+    也容易让人误判成系统故障。
 
-    ⚠️ 现状：**不会真的发邮件，也不会重置密码**。接入真实邮件服务时，
-    需要在这里：
+    接入邮件服务后按这三步实现，届时把本函数换成真实逻辑即可：
       1) 生成一次性、带过期时间的重置令牌并落库；
-      2) 通过 SMTP / 邮件服务商投递带令牌的链接；
-      3) 新增「凭令牌设置新密码」的接口，并在使用后作废令牌。
-    在此之前，前端应把该入口标注为「暂未开放」，或改为提示联系管理员重置。
+      2) 通过 SMTP / 邮件服务商投递含令牌的链接；
+      3) 新增「凭令牌设置新密码」接口，并在使用后作废令牌。
     """
-    return OkOut(ok=True)
+    logger.info("收到密码重置请求（功能未开放）: username=%s", payload.username)
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="密码重置功能暂未开放，请联系管理员或团队负责人帮你重置。",
+    )

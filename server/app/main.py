@@ -39,13 +39,23 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 安全提醒：默认 SECRET_KEY 既是 JWT 签名密钥，也是 API 密钥的加密根
+    # 安全：默认 SECRET_KEY 既是 JWT 签名密钥，也是 API 密钥的加密根。
+    # 这个值公开在仓库里 —— 一旦带到线上，任何人都能伪造任意用户的登录令牌、
+    # 也能解密数据库里已存的 API 密钥。
+    # 因此：生产模式直接**拒绝启动**（而不是只打一条容易忽略的 WARNING）。
     if settings.using_default_secret:
-        logger.warning(
-            "⚠️ 正在使用仓库内置的默认 SECRET_KEY —— 仅适合本地开发。"
-            "该值公开在仓库中，任何人可据此伪造登录令牌，也能解开已存的 API 密钥。"
-            "部署前请在 server/.env 设置 SECRET_KEY（生成：openssl rand -hex 32）。"
+        hint = (
+            "当前 SECRET_KEY 是仓库内置的默认值（公开可见）。"
+            "它既是 JWT 签名密钥，也是 API 密钥的加密根，"
+            "上线使用等于所有人都能伪造登录、解开已存密钥。\n"
+            "解决：在 server/.env 写入 SECRET_KEY=<随机值>（生成：openssl rand -hex 32）"
         )
+        if not settings.DEBUG:
+            # 生产（DEBUG=false）必须更换，宁可起不来也不要带病上线
+            raise RuntimeError(
+                "拒绝启动：检测到默认 SECRET_KEY 且 DEBUG=false。\n" + hint
+            )
+        logger.warning("⚠️ %s\n（本地开发 DEBUG=true，仅告警；生产会直接拒绝启动）", hint)
 
     # 建表 + 写入演示数据（已存在则跳过）
     await init_db()

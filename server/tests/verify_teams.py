@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""团队功能端到端测试（对真实运行的后端发 HTTP 请求）。
+r"""团队功能端到端测试（对真实运行的后端发 HTTP 请求）。
 
 覆盖：
   团队 CRUD / 邀请码 / 搜索 / 申请入队 / 审核 / 直接拉人 / 角色调整 /
   移除成员 / 转让负责人 / 退队 / 个人与团队密钥 CRUD
 
 用法（后端已在 3000 运行）：
-    .\.venv\Scripts\python.exe _test_team_e2e.py
+    .\.venv\Scripts\python.exe tests\verify_teams.py
 """
 import json
 import os
