@@ -20,7 +20,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models import Document, KnowledgeBase, now_utc
-from app.services import chunking, keyring, parser, vectorstore
+from app.services import chunking, diagnostics, keyring, parser, vectorstore
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +136,9 @@ async def _process(document_id: str, reindex: bool) -> dict[str, Any]:
             }
 
         except Exception as exc:
-            message = str(exc)[:500]
+            # 对用户展示可读的原因（带处理建议）；原始异常仍完整记日志
+            message = diagnostics.humanize_document_error(exc)
+            logger.exception("文档处理失败 id=%s（原始异常）", document_id)
             await db.rollback()
             # rollback 会丢弃未提交的改动，需重新取一次文档再写失败状态
             document = (
@@ -144,13 +146,13 @@ async def _process(document_id: str, reindex: bool) -> dict[str, Any]:
             ).scalar_one_or_none()
             if document is not None:
                 document.status = "failed"
-                document.error = message
+                document.error = message[:2000]
                 document.updated_at = now_utc()
                 await db.commit()
             # 失败时清掉可能已写入一半的向量，保证「非 ready 的文档不参与检索」
             await asyncio.to_thread(vectorstore.delete_document, document_id)
-            logger.warning("文档处理失败 id=%s: %s", document_id, message)
-            return {"ok": False, "documentId": document_id, "error": message}
+            logger.warning("文档处理失败 id=%s: %s", document_id, str(exc)[:300])
+            return {"ok": False, "documentId": document_id, "error": message[:500]}
 
 
 def process_document_sync(document_id: str, *, reindex: bool = False) -> dict[str, Any]:
@@ -169,11 +171,12 @@ async def process_document_async(document_id: str, *, reindex: bool = False) -> 
         return await _process(document_id, reindex)
     except Exception as exc:  # _process 内部已处理大部分异常，这里兜底
         logger.exception("后台解析任务异常 id=%s", document_id)
+        message = diagnostics.humanize_document_error(exc)
         try:
-            await _mark_failed(document_id, str(exc))
+            await _mark_failed(document_id, message)
         except Exception:
             logger.exception("写入失败状态时又出错 id=%s", document_id)
-        return {"ok": False, "documentId": document_id, "error": str(exc)}
+        return {"ok": False, "documentId": document_id, "error": message[:500]}
 
 
 async def _mark_failed(document_id: str, error: str) -> None:
@@ -183,7 +186,7 @@ async def _mark_failed(document_id: str, error: str) -> None:
         ).scalar_one_or_none()
         if document is not None:
             document.status = "failed"
-            document.error = error[:500]
+            document.error = error[:2000]
             document.updated_at = now_utc()
             await db.commit()
     await asyncio.to_thread(vectorstore.delete_document, document_id)

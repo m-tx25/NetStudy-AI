@@ -19,7 +19,7 @@ from app.api.serializers import document_out
 from app.core.config import settings
 from app.models import Document, KnowledgeBase, now_utc
 from app.schemas import DocumentOut, DocumentUpdateIn, OkOut
-from app.services import access, chunking, keyring, parser, vectorstore
+from app.services import access, chunking, diagnostics, keyring, parser, vectorstore
 from app.tasks import dispatch_process_document
 from app.utils.ids import new_id
 
@@ -282,7 +282,8 @@ async def _reindex_vectors(db: DbSession, document: Document) -> None:
     except Exception as exc:
         logger.warning("重新启用文档时写回向量失败 id=%s: %s", document.id, exc)
         document.status = "failed"
-        document.error = str(exc)[:500]
+        # 与 pipeline 一致：给用户可读的原因，而不是原始异常
+        document.error = diagnostics.humanize_document_error(exc)[:2000]
 
 
 @router.delete("/{document_id}", response_model=OkOut)
