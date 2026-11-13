@@ -117,6 +117,12 @@ class Settings(BaseSettings):
     # 上传文档会明确报错不会把进程带崩。生产环境请保持 false。
     CHROMA_DISABLED: bool = False
 
+    # 启动后在后台预热一次「向量化 + 向量库」调用。
+    # 为什么需要：第三方 embedding 首次请求要建 TLS 连接，实测冷启动 8 秒
+    # （之后稳定 ~200ms）。放在启动时异步做掉，第一个真实用户就不用等。
+    # 代价：每次启动多花 1 次微小的 embedding 调用；不需要可置 false。
+    WARMUP_ON_STARTUP: bool = True
+
     # ---------------- 大模型（OpenAI 兼容，用于生成）----------------
     # 注意：DeepSeek 没有 /embeddings 接口，只能用于生成，不能用于向量化。
     LLM_BASE_URL: str = "https://api.deepseek.com/v1"

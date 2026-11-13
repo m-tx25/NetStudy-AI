@@ -207,3 +207,34 @@ def test_weak_banner_mentions_thresholds() -> None:
     assert '0.76' in weak
     assert '相关度都不足' in weak
     assert '未检索到' not in weak
+
+
+# --------------------------------------------------- 启动预热（不能拖垮服务）
+def test_warmup_swallows_errors(monkeypatch) -> None:
+    """预热失败（没配 Key / 向量库不可用）绝不能影响启动。"""
+    import asyncio
+
+    from app import main as app_main
+    from app.services import vectorstore
+
+    def boom(*args, **kwargs):
+        raise RuntimeError('向量库不可用')
+
+    monkeypatch.setattr(vectorstore, 'search', boom)
+
+    # 不应抛异常
+    asyncio.run(app_main._warmup_connections())
+
+
+def test_warmup_uses_real_search_path() -> None:
+    """预热必须走 search()，而不是只 embed 一次。
+
+    实测：只预热 embed_query 时，首个真实请求仍会再冷 8 秒
+    （检索路径要打开集合、做混合检索）。
+    """
+    import inspect
+
+    from app import main as app_main
+
+    source = inspect.getsource(app_main._warmup_connections)
+    assert 'vectorstore.search' in source

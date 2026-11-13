@@ -8,7 +8,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -35,6 +37,41 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+async def _warmup_connections() -> None:
+    """在后台预热「向量化 + 向量库」的连接。
+
+    实测：第三方 embedding 的**首次**请求要建 TLS 连接，冷启动能到 8 秒
+    （之后稳定在 ~200ms）；Chroma 首次连接也有几百毫秒。
+    把这一步放在启动后台做掉，第一个真实用户就不用等那 8 秒。
+
+    只预热「连接」本身，不做完整问答：失败（没配 Key / 向量库不可用）就跳过，
+    绝不影响服务启动，也不向外抛异常。
+    """
+    try:
+        from app.services import embeddings, keyring, vectorstore
+
+        started = time.perf_counter()
+        # 走**真实调用路径**：get_embeddings(显式 Key) + Chroma 查询。
+        # 只预热 embed_query 是不够的 —— 实测请求里仍会再冷一次（8 秒），
+        # 因为检索路径还会打开集合、做一次混合检索。
+        server_key = keyring._server_key("zhipu", "embedding").secret
+        await asyncio.to_thread(
+            vectorstore.search,
+            None,
+            "预热",
+            owner_id="__warmup__",
+            top_k=1,
+            embedding_api_key=server_key,
+        )
+        logger.info(
+            "连接预热完成：检索链路 %.0f ms", (time.perf_counter() - started) * 1000
+        )
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        logger.info("连接预热跳过（不影响服务）：%s", exc)
 
 
 @asynccontextmanager
@@ -67,7 +104,16 @@ async def lifespan(app: FastAPI):
         logger.warning("演示数据初始化失败（不影响启动）：%s", exc)
 
     logger.info("服务已启动：http://%s:%s%s", settings.HOST, settings.PORT, settings.API_PREFIX)
+
+    # 后台预热：不阻塞启动，失败也不影响服务
+    warmup_task = None
+    if settings.WARMUP_ON_STARTUP:
+        warmup_task = asyncio.create_task(_warmup_connections())
+
     yield
+
+    if warmup_task is not None and not warmup_task.done():
+        warmup_task.cancel()
     logger.info("服务已停止")
 
 
