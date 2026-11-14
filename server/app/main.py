@@ -27,6 +27,7 @@ from app.api import (
     health,
     keys,
     knowledge_bases,
+    literature,
     teams,
 )
 from app.core.config import settings
@@ -189,6 +190,8 @@ for router in (
     chat.router,
     teams.router,
     keys.router,
+    # 学术检索（外部数据源）
+    literature.router,
     # 团队密钥挂在 /api/teams/{team_id}/keys 下
     keys.team_router,
 ):

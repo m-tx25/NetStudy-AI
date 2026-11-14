@@ -316,3 +316,55 @@ class ApiKey(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=now_utc, onupdate=now_utc
     )
+
+
+# ==========================================================================
+# 学术文献（外部检索）
+#
+# papers 存「外部数据源发现的论文」元数据，是导入个人文献库之前的落点；
+# 与 documents 的区别：documents 是**有实体文件、可解析可检索**的文档，
+# papers 可能只有摘要和跳转链接（非开放获取论文不抓全文）。
+# ==========================================================================
+class Paper(Base):
+    __tablename__ = "papers"
+    __table_args__ = (
+        UniqueConstraint("source", "source_id", name="uq_paper_source"),
+        Index("ix_papers_title", "title"),
+    )
+
+    # 统一 id：`<source>:<source_id>`
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    source: Mapped[str] = mapped_column(String(32), index=True)
+    source_id: Mapped[str] = mapped_column(String(255), index=True)
+    doi: Mapped[str] = mapped_column(String(128), default="", index=True)
+    title: Mapped[str] = mapped_column(String(512), default="")
+    abstract: Mapped[str] = mapped_column(Text, default="")
+    # JSON：作者列表 / 研究领域列表
+    authors_json: Mapped[str] = mapped_column(Text, default="[]")
+    fields_json: Mapped[str] = mapped_column(Text, default="[]")
+    venue: Mapped[str] = mapped_column(String(255), default="")
+    year: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    cited_by: Mapped[int] = mapped_column(Integer, default=0)
+    # 开放获取：只有 is_oa 且 pdf_url 可用的才允许下载全文
+    is_oa: Mapped[bool] = mapped_column(Boolean, default=False)
+    pdf_url: Mapped[str] = mapped_column(Text, default="")
+    landing_url: Mapped[str] = mapped_column(Text, default="")
+    type: Mapped[str] = mapped_column(String(32), default="article")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=now_utc, onupdate=now_utc
+    )
+
+
+class SearchLog(Base):
+    """检索行为日志：用于统计与后续「热门检索/推荐」的数据基础。"""
+
+    __tablename__ = "search_logs"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64), default="", index=True)
+    query_json: Mapped[str] = mapped_column(Text, default="")
+    sources: Mapped[str] = mapped_column(String(255), default="")
+    result_count: Mapped[int] = mapped_column(Integer, default=0)
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)

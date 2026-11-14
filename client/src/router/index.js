@@ -46,6 +46,12 @@ const routes = [
         meta: { title: '智能问答' },
       },
       {
+        path: 'search',
+        name: 'search',
+        component: () => import('@/views/SearchView.vue'),
+        meta: { title: '文献检索' },
+      },
+      {
         path: 'knowledge',
         name: 'knowledge',
         component: () => import('@/views/KnowledgeView.vue'),
