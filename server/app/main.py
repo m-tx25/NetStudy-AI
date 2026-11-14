@@ -22,6 +22,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.api import (
     auth,
     chat,
+    comparisons,
     conversations,
     documents,
     health,
@@ -191,6 +192,9 @@ for router in (
     keys.router,
     # 团队密钥挂在 /api/teams/{team_id}/keys 下
     keys.team_router,
+    # 多篇论文智能对比（模块五）
+    comparisons.router,
+    comparisons.paper_router,
 ):
     app.include_router(router, prefix=settings.API_PREFIX)
 

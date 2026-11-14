@@ -316,3 +316,88 @@ class ApiKey(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=now_utc, onupdate=now_utc
     )
+
+class PaperProfile(Base):
+    """一篇论文的「结构化卡片」：多篇对比的原料。
+
+    为什么单独建表缓存：抽取要求整篇论文（取样后约 6~8k token），
+    一次调用成本不低；同一篇论文反复参与对比时不应重复付费。
+    命中策略：document_id 唯一，`force=True` 时重新抽取并覆盖。
+    """
+
+    __tablename__ = "paper_profiles"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    document_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("documents.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    knowledge_base_id: Mapped[str] = mapped_column(String(64), default="", index=True)
+
+    title: Mapped[str] = mapped_column(String(512), default="")
+    authors: Mapped[str] = mapped_column(String(512), default="")
+    year: Mapped[int] = mapped_column(Integer, default=0)
+    venue: Mapped[str] = mapped_column(String(255), default="")
+
+    research_problem: Mapped[str] = mapped_column(Text, default="")
+    method_family: Mapped[str] = mapped_column(String(255), default="")
+    key_technique: Mapped[str] = mapped_column(Text, default="")
+    dataset: Mapped[str] = mapped_column(Text, default="")
+    main_results: Mapped[str] = mapped_column(Text, default="")
+
+    # 以下为 JSON 文本（MySQL 里不依赖 JSON 类型，兼容性更好）
+    metrics_json: Mapped[str] = mapped_column(Text, default="[]")
+    innovations_json: Mapped[str] = mapped_column(Text, default="[]")
+    limitations_json: Mapped[str] = mapped_column(Text, default="[]")
+    future_work_json: Mapped[str] = mapped_column(Text, default="[]")
+    citations_json: Mapped[str] = mapped_column(Text, default="{}")
+
+    # ready / failed
+    status: Mapped[str] = mapped_column(String(32), default="ready", index=True)
+    error: Mapped[str] = mapped_column(Text, default="")
+    extractor_version: Mapped[str] = mapped_column(String(16), default="v1")
+    page_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=now_utc, onupdate=now_utc
+    )
+
+
+class Comparison(Base):
+    """一次「多篇论文对比」任务及其结果。
+
+    结果全部落库：矩阵/趋势/空白/结论都是 JSON，
+    这样重新打开不再调用模型，报告也能离线导出。
+    report_md 由结构化结果拼装，不是模型直接写的，保证两者一致。
+    """
+
+    __tablename__ = "comparisons"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    # 若参与对比的论文全部属于同一个团队库，记录 team id（费用归属与权限判断用）
+    team_id: Mapped[str] = mapped_column(String(64), default="", index=True)
+
+    topic: Mapped[str] = mapped_column(String(255), default="")
+    document_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+    knowledge_base_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+
+    # pending / running / ready / failed
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    # cards / dimensions / matrix / trends / gaps / verdict / done
+    stage: Mapped[str] = mapped_column(String(32), default="cards")
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str] = mapped_column(Text, default="")
+
+    dimensions_json: Mapped[str] = mapped_column(Text, default="[]")
+    matrix_json: Mapped[str] = mapped_column(Text, default="[]")
+    trends_json: Mapped[str] = mapped_column(Text, default="{}")
+    gaps_json: Mapped[str] = mapped_column(Text, default="[]")
+    verdict: Mapped[str] = mapped_column(Text, default="")
+    scenarios_json: Mapped[str] = mapped_column(Text, default="[]")
+    report_md: Mapped[str] = mapped_column(Text, default="")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=now_utc, onupdate=now_utc
+    )

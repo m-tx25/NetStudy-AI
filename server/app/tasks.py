@@ -146,3 +146,40 @@ def process_document(self, document_id: str, reindex: bool = False) -> dict[str,
         if self.request.retries < (self.max_retries or 0):
             raise self.retry(exc=exc, countdown=5)
         return {"ok": False, "documentId": document_id, "error": str(exc)}
+
+def dispatch_comparison(comparison_id: str) -> dict[str, Any]:
+    """把「多篇论文对比」投递到后台。
+
+    与文档解析同一套语义：eager-async 模式下用 asyncio.create_task 在后台跑，
+    接口立刻返回 pending，前端轮询进度；装了 Redis 则走 Celery。
+    """
+    if settings.CELERY_TASK_ALWAYS_EAGER:
+        if settings.CELERY_EAGER_ASYNC:
+            from app.services.compare import run_comparison
+
+            task = asyncio.create_task(run_comparison(comparison_id))
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
+            return {"queued": True, "mode": "eager-async"}
+        run_async(_run_comparison_sync(comparison_id))
+        return {"queued": False, "mode": "eager"}
+
+    try:
+        run_comparison_task.delay(comparison_id)
+        return {"queued": True, "mode": "celery"}
+    except Exception as exc:  # broker 不可用
+        logger.warning("对比任务投递失败：%s", exc)
+        return {"queued": False, "mode": "failed", "error": str(exc)}
+
+
+async def _run_comparison_sync(comparison_id: str) -> None:
+    from app.services.compare import run_comparison
+
+    await run_comparison(comparison_id)
+
+
+@celery_app.task(name="app.tasks.run_comparison", bind=True, max_retries=1)
+def run_comparison_task(self, comparison_id: str) -> dict[str, Any]:
+    from app.services.compare import run_comparison
+
+    return run_async(run_comparison(comparison_id))
