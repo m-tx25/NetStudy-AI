@@ -179,7 +179,7 @@ def check_frontend() -> None:
 
 def main() -> int:
     print('=' * 66)
-    print('  RAG 知识问答系统 · 环境预检')
+    print('  苍穹矩阵 · 环境预检')
     print('=' * 66)
 
     check_python()

@@ -124,7 +124,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="创智杯 RAG 知识问答系统 · 后端",
+    title="苍穹矩阵 Matrix-Scholar · 后端",
     description=(
         "Python + FastAPI 应用服务层：JWT 鉴权、Celery 异步文档处理、"
         "LangChain 文本切片与多轮记忆的 RAG 引擎。"

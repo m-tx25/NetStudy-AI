@@ -157,7 +157,7 @@ async function handleCommand(command) {
         <span
           class="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-brand-light to-brand text-[13px] font-bold text-white"
         >
-          R
+          M
         </span>
         <span class="truncate text-sm font-semibold app-text">
           {{ APP_TITLE }}

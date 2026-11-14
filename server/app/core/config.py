@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     )
 
     # ---------------- 基础 ----------------
-    APP_NAME: str = "chuangzhibei-server"
+    APP_NAME: str = "matrix-scholar-server"
     DEBUG: bool = True
     API_PREFIX: str = "/api"
     PORT: int = 3000
