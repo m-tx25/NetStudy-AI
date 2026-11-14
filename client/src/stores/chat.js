@@ -77,6 +77,12 @@ export const useChatStore = defineStore('chat', () => {
    * 检索参数
    * ---------------------------------------------------------------- */
   const selectedKnowledgeBaseIds = ref(readSelectedBases())
+  /**
+   * 论文级检索范围（模块六「单篇 / 多篇论文问答」）。
+   * 为空 = 按知识库范围检索；非空则只在这些文档里检索。
+   * 不持久化：刷新后回到知识库范围，避免用户忘了自己钉死了某几篇。
+   */
+  const selectedDocumentIds = ref([])
   const topK = ref(RAG_DEFAULTS.topK)
   const scoreThreshold = ref(RAG_DEFAULTS.scoreThreshold)
 
@@ -268,6 +274,26 @@ export const useChatStore = defineStore('chat', () => {
   function setSelectedKnowledgeBases(ids) {
     selectedKnowledgeBaseIds.value = [...new Set(ids || [])]
     persistSelectedBases(selectedKnowledgeBaseIds.value)
+    // 换知识库后，旧的论文范围可能已不属于这些库，直接清掉
+    selectedDocumentIds.value = []
+  }
+
+  /* ---------------------------------------------------------------- *
+   * 论文范围（模块六）
+   * ---------------------------------------------------------------- */
+  function toggleDocumentScope(id) {
+    const set = new Set(selectedDocumentIds.value)
+    if (set.has(id)) set.delete(id)
+    else set.add(id)
+    selectedDocumentIds.value = [...set]
+  }
+
+  function setDocumentScope(ids) {
+    selectedDocumentIds.value = [...new Set(ids || [])]
+  }
+
+  function clearDocumentScope() {
+    selectedDocumentIds.value = []
   }
 
   /* ---------------------------------------------------------------- *
@@ -372,6 +398,8 @@ export const useChatStore = defineStore('chat', () => {
           conversationId,
           content,
           knowledgeBaseIds: [...selectedKnowledgeBaseIds.value],
+          // 论文级范围（可为空）：后端据此只在这些文档里检索，并按篇配额召回
+          documentIds: [...selectedDocumentIds.value],
           topK: topK.value,
           scoreThreshold: scoreThreshold.value,
           // 生成模型（不影响检索用的向量化模型）
@@ -388,6 +416,11 @@ export const useChatStore = defineStore('chat', () => {
                 if (typeof event.grounded === 'boolean') assistant.grounded = event.grounded
                 if (event.answerSource) assistant.source = event.answerSource
                 if (event.modelLabel) assistant.modelLabel = event.modelLabel
+                // 多篇论文问答：哪几篇没召回到依据，要明确告诉用户
+                if (Array.isArray(event.missingDocuments)) {
+                  assistant.missingDocuments = event.missingDocuments
+                }
+                if (Array.isArray(event.coverage)) assistant.coverage = event.coverage
                 break
               case 'delta':
                 assistant.status = 'streaming'
@@ -498,6 +531,12 @@ export const useChatStore = defineStore('chat', () => {
     lastError,
     isEmptyConversation,
     selectedKnowledgeBaseIds,
+    selectedDocumentIds,
+    toggleKnowledgeBase,
+    setSelectedKnowledgeBases,
+    toggleDocumentScope,
+    setDocumentScope,
+    clearDocumentScope,
     topK,
     scoreThreshold,
     // 生成模型与回退状态
@@ -517,8 +556,6 @@ export const useChatStore = defineStore('chat', () => {
     stopStreaming,
     renameConversation,
     removeConversation,
-    toggleKnowledgeBase,
-    setSelectedKnowledgeBases,
     reset,
   }
 })

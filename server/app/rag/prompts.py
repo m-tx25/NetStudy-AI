@@ -29,6 +29,8 @@ GROUNDED_SYSTEM_PROMPT = """你是一个严谨的企业知识库问答助手。�
 4. 使用 Markdown 组织答案：结论先行，需要分点时用有序或无序列表，
    涉及步骤、参数、对比时使用表格，涉及代码时使用围栏代码块。
 5. 保持简洁准确，不要重复问题本身，不要输出与问题无关的内容。
+6. 涉及多篇论文时，先分别说明各篇怎么说，再给综合结论；
+   不要只依据其中一篇就代替全部，也不要把某篇没提到的内容说成它支持。
 """
 
 # --------------------------------------------------------------------------
@@ -115,20 +117,51 @@ def build_context(chunks: list[RetrievedChunk], snippet_limit: int = 600) -> str
         text = chunk.content.strip()
         if len(text) > snippet_limit:
             text = f"{text[:snippet_limit]}…"
-        location = f"第 {chunk.page} 页" if chunk.page else f"第 {chunk.ordinal + 1} 段"
+        # 定位信息尽量具体：页码 + 章节（章节由解析阶段识别，可能为空）
+        parts = [f"第 {chunk.page} 页" if chunk.page else f"第 {chunk.ordinal + 1} 段"]
+        if chunk.section:
+            parts.append(chunk.section)
+        location = " · ".join(parts)
         blocks.append(
             f"[{index}]（来源：{chunk.document_name} · {location} · 相关度 {chunk.score:.2f}）\n{text}"
         )
     return "\n\n".join(blocks)
 
 
-def build_user_prompt(question: str, chunks: list[RetrievedChunk]) -> str:
+# 多篇论文同时作答时的额外要求。
+# 为什么必须显式约束：模型默认会挑「最相关的那一篇」作答，
+# 用户选了 5 篇却只拿到 1 篇的内容，还以为其余 4 篇都说了一样的话。
+MULTI_PAPER_RULES = """本次问题涉及以下 {count} 篇论文：
+{documents}
+
+作答要求（多篇论文场景）：
+1. 凡是能从多篇论文得到信息的问题，**先分别说明各篇的说法**，再给出综合结论；
+2. 各篇结论不一致时，明确指出差异，并分别标注依据编号；
+3. 若某篇论文在参考资料中没有相关内容，直接写「《论文名》未提及」，
+   **不要**用其他论文的内容替它作答，也不要假装它支持某个观点；
+4. 跨论文的关联（继承、改进、互相矛盾）要明确指出，例如「A 解决了 B 的检索效率问题」。
+"""
+
+
+def build_user_prompt(
+    question: str,
+    chunks: list[RetrievedChunk],
+    document_names: list[str] | None = None,
+) -> str:
     context = build_context(chunks)
+    names = [name for name in dict.fromkeys(document_names or []) if name]
+    multi = ""
+    if len(names) >= 2:
+        multi = MULTI_PAPER_RULES.format(
+            count=len(names),
+            documents="\n".join(f"- {name}" for name in names),
+        ) + "\n"
+
     if not context:
-        return f"用户问题：{question}"
+        return f"{multi}用户问题：{question}"
 
     return (
-        f"参考资料：\n{context}\n\n"
+        f"{multi}参考资料：\n{context}\n\n"
         f"用户问题：{question}\n\n"
         "请依据上述参考资料作答，并在引用处标注对应编号。"
     )
@@ -140,10 +173,12 @@ def build_messages(
     history: list[tuple[str, str]] | None = None,
     *,
     grounded: bool | None = None,
+    document_names: list[str] | None = None,
 ) -> list[dict[str, str]]:
     """组装完整的 messages：system + 历史多轮 + 当前问题。
 
     grounded: True = 有知识库依据；False = 用模型自身知识；None = 按 chunks 自动判断。
+    document_names: 本次问答涉及的论文名（≥2 篇时追加跨论文作答要求）。
     """
     if grounded is None:
         grounded = bool(chunks)
@@ -157,7 +192,9 @@ def build_messages(
         # 历史中的助手回答不重复携带引用资料，避免上下文爆炸
         messages.append({"role": role, "content": content})
 
-    messages.append({"role": "user", "content": build_user_prompt(question, chunks)})
+    messages.append(
+        {"role": "user", "content": build_user_prompt(question, chunks, document_names)}
+    )
     return messages
 
 

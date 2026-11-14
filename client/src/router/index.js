@@ -76,6 +76,12 @@ const routes = [
         meta: { title: '团队' },
       },
       {
+        path: 'compare',
+        name: 'compare',
+        component: () => import('@/views/CompareView.vue'),
+        meta: { title: '论文对比' },
+      },
+      {
         path: 'settings',
         name: 'settings',
         component: () => import('@/views/SettingsView.vue'),

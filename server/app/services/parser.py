@@ -290,15 +290,68 @@ def _parse_doc(path: Path) -> Pages:
     return [(None, text)]
 
 
+# 章节标题识别。论文里常见两种：
+#   英文：`3 Method` / `4.2 Experimental Setup` / `II. RELATED WORK`
+#   中文：`三、实验结果` / `第 3 章 方法`
+# 只匹配「短行」——整段正文里出现 "3 Method" 也不是标题。
+_SECTION_PATTERNS = (
+    re.compile(r"^(?:\d{1,2}(?:\.\d{1,2}){0,2})\.?\s+[A-Z][A-Za-z][\w\-&/, ]{2,60}$"),
+    re.compile(r"^(?:[IVX]{1,4})\.\s+[A-Z][A-Za-z][\w\-&/, ]{2,60}$"),
+    # 综述常见单字母编号：`A. Retrieval Source` / `B. Indexing Optimization`
+    re.compile(r"^[A-Z]\.\s+[A-Z][A-Za-z][\w\-&/, ]{2,60}$"),
+    re.compile(r"^第\s*\d{1,2}\s*章[\s、.．:：]*\S{0,40}$"),
+    re.compile(r"^[一二三四五六七八九十]{1,3}[、.．]\s*\S{2,40}$"),
+    re.compile(r"^(?:Abstract|Introduction|Related Work|Background|Method(?:ology)?|"
+               r"Experiments?|Evaluation|Results|Discussion|Conclusion[s]?|"
+               r"Acknowled\w*|References|Appendix[\w ]*)$", re.I),
+)
+
+# 进入参考文献后不再猜标题：那里满篇是「A. Vaswani, ... 2017」这类作者行，
+# 会被单字母标题规则误判（实测综述论文把参考文献当成了八个章节）。
+_REFERENCE_MARKERS = ("references", "bibliography", "参考文献")
+
+# 目录/页眉里大量重复的编号行不是正文标题，超过这个长度判断为正文
+_SECTION_MAX_LEN = 80
+
+
+def _detect_section(text: str) -> str:
+    """从一段文本里找章节标题，返回找到的最后一个（`3.2 Setup` 优先于 `3 Method`）。
+
+    为什么取「最后一个」：一页里可能先结束上一节、再开始下一节，
+    该页后续内容属于最后出现的那节标题；取第一个会错位。
+    """
+    found = ""
+    for raw_line in (text or "").splitlines():
+        line = raw_line.strip()
+        if not line or len(line) > _SECTION_MAX_LEN:
+            continue
+        # 行首常见项目符号/页码噪声，先剥掉
+        line = line.lstrip("#•·-–—* ").strip()
+        if not line:
+            continue
+        for pattern in _SECTION_PATTERNS:
+            if pattern.match(line):
+                found = line
+                break
+    return found[:120]
+
+
 def _pages_to_documents(pages: Pages, path: Path, loader: str) -> list[Document]:
     documents: list[Document] = []
+    # 章节状态跨页延续：某页没有标题时，沿用上一页所在的章节
+    current_section = ""
     for page_no, text in pages:
         if not (text or "").strip():
             continue
+        detected = _detect_section(text)
+        if detected:
+            current_section = detected
         metadata: dict[str, object] = {"source": str(path), "loader": loader}
         if page_no is not None:
             metadata["page"] = page_no - 1  # 与 LangChain 一致，0 基
             metadata["page_label"] = page_no  # 人类可读，1 基
+        if current_section:
+            metadata["section"] = current_section
         documents.append(Document(page_content=text, metadata=metadata))
     return documents
 
@@ -333,8 +386,34 @@ _LANGCHAIN_FIRST = {
 SUPPORTED_SUFFIXES = sorted(_BUILTIN)
 
 
+def _enrich_sections(documents: list[Document]) -> list[Document]:
+    """给文档补上 `section` 元数据（章节标题）。
+
+    为什么放在 parse_document 末尾而不是各解析器里：
+    PDF 走的是 LangChain 的 PyPDFLoader，绕过了内置的 `_pages_to_documents`，
+    章节信息会丢。在这里统一补，任何加载器都能受益。
+
+    状态跨页延续：某页没出现标题时，沿用上一页所在的章节。
+    解读：论文里 `2.1 Models` 这类标题往往是独立短行，正文中提到
+    "section 3" 不会匹配（正则要求整行就是标题）。
+    """
+    current = ""
+    for document in documents:
+        # 进了参考文献就别再猜了（否则作者行会被当成章节标题）
+        in_references = any(
+            marker in current.lower() for marker in _REFERENCE_MARKERS
+        )
+        if not in_references:
+            detected = _detect_section(document.page_content or "")
+            if detected:
+                current = detected
+        if current:
+            document.metadata = {**(document.metadata or {}), "section": current}
+    return documents
+
+
 def parse_document(path: str | Path) -> list[Document]:
-    """解析文件，返回 LangChain Document 列表（带 page / page_label 元数据）。"""
+    """解析文件，返回 LangChain Document 列表（带 page / page_label / section 元数据）。"""
     file_path = Path(path)
     if not file_path.exists():
         raise ParseError(f"文件不存在：{file_path}")
@@ -350,7 +429,7 @@ def parse_document(path: str | Path) -> list[Document]:
     if loader_name:
         documents = _load_with_langchain(file_path, loader_name)
         if documents:
-            return documents
+            return _enrich_sections(documents)
 
     # 2) 回退到内置解析器
     pages = _BUILTIN[suffix](file_path)
@@ -360,7 +439,7 @@ def parse_document(path: str | Path) -> list[Document]:
     documents = _pages_to_documents(pages, file_path, loader="builtin")
     if not documents:
         raise ParseError("解析后没有产生任何可用文本")
-    return documents
+    return _enrich_sections(documents)
 
 
 def text_length(documents: list[Document]) -> int:

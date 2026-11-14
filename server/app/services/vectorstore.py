@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import re
 import time
@@ -323,6 +324,7 @@ class RetrievedChunk:
         "score",
         "ordinal",
         "lexical",
+        # 章节类型（method/abstract…）与原文标题（如「3 Method」）
         "section",
         "section_heading",
     )
@@ -356,7 +358,7 @@ class RetrievedChunk:
         self.lexical = lexical
         # 章节类型（M3 起写入；旧切片为空串）
         self.section = section
-        # 章节原文标题（如 "2.2.1 BM25"），展示时优先于泛化的「全文」
+        # 章节原文标题（如 "2.2.1 BM25"），展示时优先于类型名
         self.section_heading = section_heading
 
     def snippet(self, limit: int = 160) -> str:
@@ -414,7 +416,14 @@ def add_chunks(
 
     for item in chunks:
         ordinal, content, page = item[0], item[1], item[2]
-        extra = item[3] if len(item) > 3 and isinstance(item[3], dict) else {}
+        extra = item[3] if len(item) > 3 else None
+        if isinstance(extra, dict):
+            section_type = str(extra.get("section") or "")
+            section_heading = str(extra.get("section_heading") or "")
+        else:
+            # 兼容远端旧形状：(ordinal, content, page, section_heading)
+            section_type = ""
+            section_heading = str(extra or "")
         text = (content or "").strip()
         if not text:
             continue
@@ -434,12 +443,15 @@ def add_chunks(
             "ordinal": ordinal,
             # Chroma 元数据只接受 str/int/float/bool，None 需转成 -1
             "page_label": int(page) if page else -1,
+            # 章节：类型用于过滤（method/abstract…），标题用于引用展示
+            "section": section_type,
+            "section_heading": section_heading,
         }
-        # 章节结构：只收标量，避免把 dict/list 写进向量库
-        for key in ("section", "section_heading", "page_start", "page_end"):
-            value = extra.get(key)
-            if isinstance(value, (str, int, float, bool)):
-                metadata[key] = value
+        if isinstance(extra, dict):
+            for key in ("page_start", "page_end"):
+                value = extra.get(key)
+                if isinstance(value, int):
+                    metadata[key] = value
         metadatas.append(metadata)
 
     if not ids:
@@ -564,18 +576,44 @@ def count_by_knowledge_base(knowledge_base_ids: list[str]) -> dict[str, int]:
 # --------------------------------------------------------------------------
 # 检索
 # --------------------------------------------------------------------------
+def _apply_document_quota(
+    candidates: list[RetrievedChunk],
+    doc_ids: list[str],
+    limit: int,
+) -> list[RetrievedChunk]:
+    """按论文配额裁剪候选集。
+
+    为什么需要：多篇论文问答时，如果只取全局 Top-K，最相关的那篇会把名额吃光，
+    其余论文一条都进不来 —— 用户选了 5 篇，模型却只看到 1 篇的内容，
+    于是「跨文献关联」变成了「单篇总结」。
+
+    规则：每篇论文保底 `ceil(limit / 篇数)` 条（且至少 2 条），
+    再整体按相关度排序返回。某篇候选不足时有多少给多少，不影响其它篇。
+    """
+    if not doc_ids:
+        return candidates
+
+    quota = max(2, math.ceil(limit / len(doc_ids)))
+    kept: list[RetrievedChunk] = []
+    for doc_id in doc_ids:
+        own = [item for item in candidates if item.document_id == doc_id]
+        kept.extend(own[:quota])
+    kept.sort(key=lambda item: item.score, reverse=True)
+    return kept
+
+
 def search(
     db: Any,  # 保留形参以兼容既有调用签名（引擎层传入会话），当前实现不需要数据库
     query_text: str,
     *,
     owner_id: str,
     knowledge_base_ids: list[str] | None = None,
+    document_ids: list[str] | None = None,
     top_k: int = 5,
     score_threshold: float = 0.2,
     hybrid: bool | None = None,
     team_ids: list[str] | None = None,
     embedding_api_key: str = "",
-    document_ids: list[str] | None = None,
     sections: list[str] | None = None,
 ) -> list[RetrievedChunk]:
     """检索相关切片。
@@ -584,83 +622,116 @@ def search(
       - owner_id / team_ids 在**向量库层面**过滤，确保不会跨用户、跨团队召回
         （安全边界）。团队知识库的切片带 team_id，只要提问者是该团队成员
         就应能召回 —— 这正是「团队知识库」的意义；
-      - knowledge_base_ids / document_ids / sections 在候选集上二次过滤
-        （Chroma 的 $in 对动态列表较脆弱；单篇论文范围问答用 document_ids）；
+      - knowledge_base_ids / sections 在候选集上二次过滤
+        （Chroma 的 $in 对动态列表较脆弱）；
+      - **document_ids 命中时按论文配额召回**：每篇论文单独查询并保底配额，
+        否则热门论文会吃掉全部 top_k，其余论文一条都进不来，
+        「多篇论文问答 / 跨文献关联」就永远只有一篇的内容；
       - 混合检索开启时先取较大候选池，再用 0.5×向量 + 0.5×词面 重排。
     """
     use_hybrid = settings.HYBRID_SEARCH if hybrid is None else hybrid
     limit = max(1, top_k)
+    docs = [item for item in dict.fromkeys(document_ids or []) if item]
 
-    # 归属过滤：我的个人库切片 + 我所在团队的团队库切片
-    scope_conditions: list[dict[str, Any]] = [{"owner_id": owner_id}]
-    if team_ids:
-        scope_conditions.append({"team_id": {"$in": list(team_ids)}})
-    where: dict[str, Any] = (
-        scope_conditions[0] if len(scope_conditions) == 1 else {"$or": scope_conditions}
-    )
+    def scope_where(document_id: str | None = None) -> dict[str, Any]:
+        conditions: list[dict[str, Any]] = [{"owner_id": owner_id}]
+        if team_ids:
+            conditions.append({"team_id": {"$in": list(team_ids)}})
+        base = conditions[0] if len(conditions) == 1 else {"$or": conditions}
+        if document_id:
+            return {"$and": [base, {"document_id": {"$eq": document_id}}]}
+        return base
 
-    try:
-        # 集合按本次实际使用的 key 选（用户自备 Key → zhipu2048，否则 offline512）
-        collection = get_collection(embedding_api_key)
-        n_fetch = max(limit, HYBRID_POOL) if use_hybrid else limit
-        # 统一走「自己算查询向量」：离线实现与智谱实现都实现了 embed_query，
-        # 不再需要 query_texts 分支（那会依赖集合上的 embedding_function，
-        # 从而触发 Chroma 内置 ONNX 模型的 79MB 下载）。
-        query_vector = embeddings.get_embeddings(embedding_api_key or None).embed_query(
-            query_text
-        )
+    allowed = set(knowledge_base_ids) if knowledge_base_ids else None
+    allowed_sections = set(sections) if sections else None
+
+    def collect(
+        collection: Any,
+        query_vector: list[float],
+        where: dict[str, Any],
+        n_fetch: int,
+        allowed_docs: set[str] | None = None,
+    ) -> list[RetrievedChunk]:
         result = collection.query(
             query_embeddings=[query_vector],
             n_results=n_fetch,
             where=where,
             include=["documents", "metadatas", "distances"],
         )
+        documents = (result.get("documents") or [[]])[0]
+        metadatas = (result.get("metadatas") or [[]])[0]
+        distances = (result.get("distances") or [[]])[0]
+        ids = (result.get("ids") or [[]])[0]
+
+        items: list[RetrievedChunk] = []
+        for index, content in enumerate(documents):
+            metadata = (metadatas[index] if index < len(metadatas) else {}) or {}
+            if allowed is not None and metadata.get("knowledge_base_id") not in allowed:
+                continue
+            doc_id = str(metadata.get("document_id") or "")
+            if allowed_docs is not None and doc_id not in allowed_docs:
+                continue
+            if (
+                allowed_sections is not None
+                and str(metadata.get("section") or "") not in allowed_sections
+            ):
+                continue
+
+            distance = distances[index] if index < len(distances) else None
+            page = metadata.get("page_label")
+            items.append(
+                RetrievedChunk(
+                    chunk_id=ids[index] if index < len(ids) else f"#{index}",
+                    document_id=doc_id,
+                    document_name=str(metadata.get("document_name") or ""),
+                    knowledge_base_id=str(metadata.get("knowledge_base_id") or ""),
+                    knowledge_base_name=str(metadata.get("knowledge_base_name") or ""),
+                    content=content or "",
+                    page=int(page) if isinstance(page, int) and page > 0 else None,
+                    score=_distance_to_similarity(distance),
+                    ordinal=int(metadata.get("ordinal") or 0),
+                    lexical=lexical_score(query_text, content or ""),
+                    section=str(metadata.get("section") or ""),
+                    section_heading=str(metadata.get("section_heading") or ""),
+                )
+            )
+        return items
+
+    try:
+        # 集合按本次实际使用的 key 选（用户自备 Key → zhipu2048，否则 offline512）
+        collection = get_collection(embedding_api_key)
+        # 统一走「自己算查询向量」：离线实现与智谱实现都实现了 embed_query，
+        # 不再需要 query_texts 分支（那会依赖集合上的 embedding_function，
+        # 从而触发 Chroma 内置 ONNX 模型的 79MB 下载）。
+        query_vector = embeddings.get_embeddings(embedding_api_key or None).embed_query(
+            query_text
+        )
+        per_doc_pool = max(HYBRID_POOL, 6) if use_hybrid else 6
+        if docs:
+            # 每篇论文单独查一次，池子给够，再按配额截断（见下方裁剪）
+            candidates: list[RetrievedChunk] = []
+            for doc_id in docs:
+                candidates.extend(
+                    collect(
+                        collection,
+                        query_vector,
+                        scope_where(doc_id),
+                        max(per_doc_pool, limit),
+                        allowed_docs={doc_id},
+                    )
+                )
+        else:
+            candidates = collect(
+                collection,
+                query_vector,
+                scope_where(),
+                max(limit, HYBRID_POOL) if use_hybrid else limit,
+            )
     except VectorStoreUnavailable:
         raise
     except Exception as exc:
         logger.warning("向量检索失败：%s", exc)
         return []
-
-    documents = (result.get("documents") or [[]])[0]
-    metadatas = (result.get("metadatas") or [[]])[0]
-    distances = (result.get("distances") or [[]])[0]
-    ids = (result.get("ids") or [[]])[0]
-
-    allowed = set(knowledge_base_ids) if knowledge_base_ids else None
-    allowed_docs = set(document_ids) if document_ids else None
-    allowed_sections = set(sections) if sections else None
-
-    candidates: list[RetrievedChunk] = []
-    for index, content in enumerate(documents):
-        metadata = (metadatas[index] if index < len(metadatas) else {}) or {}
-        if allowed is not None and metadata.get("knowledge_base_id") not in allowed:
-            continue
-        if allowed_docs is not None and str(metadata.get("document_id") or "") not in allowed_docs:
-            continue
-        if (
-            allowed_sections is not None
-            and str(metadata.get("section") or "") not in allowed_sections
-        ):
-            continue
-
-        distance = distances[index] if index < len(distances) else None
-        page = metadata.get("page_label")
-        candidates.append(
-            RetrievedChunk(
-                chunk_id=ids[index] if index < len(ids) else f"#{index}",
-                document_id=str(metadata.get("document_id") or ""),
-                document_name=str(metadata.get("document_name") or ""),
-                knowledge_base_id=str(metadata.get("knowledge_base_id") or ""),
-                knowledge_base_name=str(metadata.get("knowledge_base_name") or ""),
-                content=content or "",
-                page=int(page) if isinstance(page, int) and page > 0 else None,
-                score=_distance_to_similarity(distance),
-                ordinal=int(metadata.get("ordinal") or 0),
-                lexical=lexical_score(query_text, content or ""),
-                section=str(metadata.get("section") or ""),
-                section_heading=str(metadata.get("section_heading") or ""),
-            )
-        )
 
     if not candidates:
         return []
@@ -679,6 +750,11 @@ def search(
                 )
 
     candidates.sort(key=lambda item: item.score, reverse=True)
+
+    if docs:
+        # 按论文配额保留：每篇至少 min(quota, 该篇候选数) 条，
+        # 保证「多篇论文问答」里每篇都有发言权，而不是被最相关的那篇垄断。
+        candidates = _apply_document_quota(candidates, docs, limit)
 
     filtered = [item for item in candidates if item.score >= score_threshold]
     if filtered:

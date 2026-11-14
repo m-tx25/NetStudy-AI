@@ -219,6 +219,8 @@ onMounted(async () => {
 </script>
 
 <template>
+  <!-- 外层是 h-screen overflow-hidden，页面要自带滚动容器，否则长列表被裁掉 -->
+  <div class="h-full overflow-y-auto scrollbar-thin">
   <div class="mx-auto w-full max-w-6xl px-4 py-6 md:px-6">
     <!-- 头部 -->
     <header class="mb-5 flex flex-wrap items-center gap-3">
@@ -605,5 +607,6 @@ onMounted(async () => {
         </el-tabs>
       </div>
     </el-drawer>
+  </div>
   </div>
 </template>

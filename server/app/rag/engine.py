@@ -29,6 +29,7 @@ from app.core.config import settings
 from app.models import (
     Conversation,
     ConversationKnowledgeBase,
+    Document,
     KnowledgeBase,
     Message,
     MessageSource,
@@ -147,6 +148,7 @@ async def stream_answer(
     conversation_id: str | None,
     question: str,
     knowledge_base_ids: list[str] | None = None,
+    document_ids: list[str] | None = None,
     top_k: int | None = None,
     score_threshold: float | None = None,
     model_id: str | None = None,
@@ -163,6 +165,37 @@ async def stream_answer(
     向量化模型与此无关，始终由 ZHIPUAI_* 配置决定。
     """
     kb_ids = list(knowledge_base_ids or [])
+    doc_ids = list(dict.fromkeys(document_ids or []))
+
+    # 论文级范围：校验这些文档确实可访问（跨用户/跨团队一律按不存在处理），
+    # 同时拿到名称，用于「哪几篇有依据 / 哪几篇没有」的覆盖清单。
+    paper_names: dict[str, str] = {}
+    if doc_ids:
+        rows = (
+            await db.execute(
+                select(Document.id, Document.name)
+                .join(KnowledgeBase, Document.knowledge_base_id == KnowledgeBase.id)
+                .where(Document.id.in_(doc_ids))
+                .where(
+                    access.accessible_condition(
+                        user.id, await access.member_team_ids(db, user.id)
+                    )
+                )
+            )
+        ).all()
+        paper_names = {row[0]: row[1] for row in rows}
+        # 过滤掉越权/已删的 id；一篇都不剩则按「没选论文」处理，退回知识库范围
+        doc_ids = [item for item in doc_ids if item in paper_names]
+        if doc_ids and not kb_ids:
+            kb_ids = list(
+                (
+                    await db.execute(
+                        select(Document.knowledge_base_id).where(
+                            Document.id.in_(doc_ids)
+                        )
+                    )
+                ).scalars()
+            )
 
     # ---------- 1. 会话：能复用则复用，否则新建 ----------
     conversation: Conversation | None = None
@@ -248,7 +281,11 @@ async def stream_answer(
             question,
             owner_id=user.id,
             knowledge_base_ids=kb_ids,
-            top_k=top_k or settings.TOP_K,
+            document_ids=doc_ids,
+            top_k=(
+                top_k
+                or (max(6, 2 * len(doc_ids)) if doc_ids else settings.TOP_K)
+            ),
             score_threshold=(
                 score_threshold if score_threshold is not None else settings.SCORE_THRESHOLD
             ),
@@ -311,10 +348,29 @@ async def stream_answer(
             "knowledgeBaseName": chunk.knowledge_base_name,
             "score": chunk.score,
             "page": chunk.page,
+            # 章节标题（如「3 Method」）：优先用解析出的原文标题，
+            # 旧切片只有类型（method/abstract），再退回类型
+            "section": getattr(chunk, "section_heading", "") or chunk.section,
             "snippet": chunk.snippet(),
         }
         for chunk in context_chunks
     ]
+
+    # 逐篇统计「这篇论文有没有被召回的依据」。
+    # 多篇论文问答里最误导的情况是：用户选了 3 篇，模型只依据 1 篇作答却不说。
+    # 这里把覆盖情况随 meta 下发，前端可明确提示「X、Y 两篇未找到相关依据」。
+    coverage: list[dict[str, Any]] = []
+    missing_documents: list[str] = []
+    if doc_ids:
+        counts: dict[str, int] = {}
+        for chunk in context_chunks:
+            counts[chunk.document_id] = counts.get(chunk.document_id, 0) + 1
+        for doc_id in doc_ids:
+            hits = counts.get(doc_id, 0)
+            name = paper_names.get(doc_id, doc_id)
+            coverage.append({"documentId": doc_id, "documentName": name, "hits": hits})
+            if hits == 0:
+                missing_documents.append(name)
 
     yield {
         "type": "meta",
@@ -328,6 +384,10 @@ async def stream_answer(
         "retrieved": len(chunks),
         # 构成依据的片段数；为 0 才是真正的「知识库里没有」
         "evidence": len(evidence),
+        # 论文级范围与覆盖情况（未选论文时为空）
+        "documentIds": doc_ids,
+        "coverage": coverage,
+        "missingDocuments": missing_documents,
     }
 
     # 先推引用来源，再推正文 —— 与前端 mock 的顺序一致，
@@ -355,7 +415,11 @@ async def stream_answer(
     if grounded or use_fallback:
         # 有依据 → 严格 RAG（只喂构成依据的片段）；无依据但允许回退 → 用模型自身知识
         messages = prompts.build_messages(
-            question, context_chunks, history, grounded=grounded
+            question,
+            context_chunks,
+            history,
+            grounded=grounded,
+            document_names=[paper_names.get(item, item) for item in doc_ids] if doc_ids else None,
         )
         if not grounded:
             # 标注由服务端直接下发，不依赖模型自觉 —— 保证用户一定看得到。

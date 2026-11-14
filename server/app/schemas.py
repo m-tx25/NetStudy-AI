@@ -204,6 +204,9 @@ class StreamChatIn(CamelModel):
     conversation_id: str | None = None
     content: str
     knowledge_base_ids: list[str] = Field(default_factory=list)
+    # 论文级范围：非空时只在这些文档里检索（模块六「单篇/多篇论文问答」）。
+    # 与 knowledge_base_ids 可同时存在，document_ids 优先。
+    document_ids: list[str] = Field(default_factory=list)
     top_k: int | None = None
     score_threshold: float | None = None
     # 生成模型 id（见 GET /api/chat/models）；留空则用服务端默认模型。
@@ -467,3 +470,51 @@ class ModelOptionOut(CamelModel):
     model: str = ""
     configured: bool = False
     source: str = "server"
+
+class ComparisonCreateIn(CamelModel):
+    """创建一次多篇论文对比。"""
+
+    document_ids: list[str]
+    # 可选：给一个研究主题，会作为报告标题，并帮助模型收敛维度
+    topic: str = ""
+
+
+class ComparisonOut(CamelModel):
+    id: str
+    topic: str = ""
+    # pending / running / ready / failed
+    status: str = "pending"
+    # cards / dimensions / matrix / trends / verdict / done
+    stage: str = "cards"
+    progress: int = 0
+    error: str = ""
+    document_ids: list[str] = []
+    dimensions: list[dict] = []
+    matrix: list[dict] = []
+    trends: dict = {}
+    gaps: list[dict] = []
+    verdict: str = ""
+    scenarios: list[dict] = []
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class PaperProfileOut(CamelModel):
+    document_id: str
+    status: str = "ready"
+    title: str = ""
+    authors: str = ""
+    year: int = 0
+    venue: str = ""
+    research_problem: str = ""
+    method_family: str = ""
+    key_technique: str = ""
+    dataset: str = ""
+    main_results: str = ""
+    metrics: list[dict] = []
+    innovations: list[str] = []
+    limitations: list[str] = []
+    future_work: list[str] = []
+    citations: dict = {}
+    page_count: int = 0
+    error: str = ""
