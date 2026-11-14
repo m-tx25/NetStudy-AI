@@ -552,6 +552,7 @@ $env:API_BASE='http://你的域名/api'
 | `server/` | `.\.venv\Scripts\python.exe tests\verify_byok_deploy.py` | **上线验收**：用户自备 Key 是否真生效（18 项，不消耗额度） |
 | `server/` | `.\.venv\Scripts\python.exe tests\verify_upload_dedup.py` | 上传去重 + 批量删除验收（21 项） |
 | `server/` | `.\.venv\Scripts\python.exe tests\verify_compare.py` | **多篇论文对比验收**（28 项，需三篇论文 PDF） |
+| `server/` | `.\.venv\Scripts\python.exe tests\verify_qa_paper.py` | **学术问答验收**：论文级范围 / 覆盖清单 / 连续对话（12 项，向量不可用时自动跳过 2 项） |
 | `server/` | `.\.venv\Scripts\python.exe -m pytest tests\test_units.py -q` | 纯单元测试（29 项，不连数据库，CI 同款） |
 | `server/` | `.\.venv\Scripts\python.exe cleanup_test_data.py` | 清理自动化测试留下的账号/团队（默认 dry-run，`--yes` 才执行） |
 | `server/` | `.\.venv\Scripts\python.exe prune_orphan_vectors.py` | 清理数据库已删但 Chroma 仍残留的切片（默认 dry-run） |
@@ -876,6 +877,7 @@ git push origin feat/你的功能
 | 权限收口 | `cd server && .\.venv\Scripts\python.exe tests\verify_permissions.py` | 18/18 |
 | 上传去重 / 批量删除 | `cd server && .\.venv\Scripts\python.exe tests\verify_upload_dedup.py` | 21/21 |
 | 多篇论文对比 | `cd server && .\.venv\Scripts\python.exe tests\verify_compare.py` | 28/28 |
+| 学术问答 | `cd server && .\.venv\Scripts\python.exe tests\verify_qa_paper.py` | 12/12 |
 | 清理逻辑 | `cd server && .\.venv\Scripts\python.exe tests\verify_cleanup.py` | 12/12 |
 | BYOK（上线前） | `cd server && .\.venv\Scripts\python.exe tests\verify_byok_deploy.py` | 18/18 |
 | 前端 e2e | `cd client && node scripts/e2e-teams.mjs` | 24/24 |
