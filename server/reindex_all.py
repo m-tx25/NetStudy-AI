@@ -19,6 +19,14 @@ from __future__ import annotations
 import asyncio
 import socket
 import sys
+
+# Windows 控制台默认 GBK，脚本里的 emoji（✅/❌）会直接抛 UnicodeEncodeError。
+# 这里让不可编码的字符降级为 '?'，而不是让整个脚本崩掉。
+try:
+    sys.stdout.reconfigure(errors='replace')
+    sys.stderr.reconfigure(errors='replace')
+except Exception:
+    pass
 import time
 from pathlib import Path
 
