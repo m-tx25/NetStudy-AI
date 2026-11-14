@@ -40,6 +40,7 @@ from app.schemas_library import (
     LibraryPage,
     NoteIn,
     NoteOut,
+    ReadingProgressIn,
     TagIn,
     TagOut,
 )
@@ -74,7 +75,8 @@ def _paper_payload(row: Paper) -> PaperDTO:
         source_id=row.source_id,
         doi=row.doi or "",
         title=row.title or "",
-        abstract=row.abstract or "",
+        # 摘要按单段输出：历史数据里可能有 PDF 断行，直接展示会「一个词一行」
+        abstract=" ".join((row.abstract or "").split()),
         authors=authors,
         venue=row.venue or "",
         year=row.year,
@@ -86,7 +88,6 @@ def _paper_payload(row: Paper) -> PaperDTO:
         url=row.landing_url or "",
         type=row.type or "article",
     )
-
 
 async def _ensure_paper(db: DbSession, dto: PaperDTO) -> tuple[Paper, bool]:
     """按 source+id → DOI → 标题+年份 的顺序匹配已有论文，没有则新建。"""
@@ -269,6 +270,44 @@ async def add_item(payload: LibraryItemIn, user: CurrentUser, db: DbSession) -> 
     db.add(item)
     await db.commit()
     return await _serialize(db, item)
+
+
+@router.post("/progress")
+async def report_progress(
+    payload: ReadingProgressIn, user: CurrentUser, db: DbSession
+) -> dict:
+    """阅读状态自动识别（不需要用户手动点）。
+
+    规则：
+      - 打开论文页（progress=0）→ 未读变「阅读中」；
+      - 滚动进度增长 → 记录 progress；
+      - 读到底部（finished=true）→ 「已读」、进度 100%；
+      - 已读不会被后续访问降级。
+    """
+    item = (
+        await db.execute(
+            select(LibraryItem)
+            .where(LibraryItem.user_id == user.id)
+            .where(LibraryItem.document_id == payload.document_id)
+        )
+    ).scalar_one_or_none()
+    if item is None:
+        return {"ok": False, "status": "", "progress": 0}
+
+    progress = max(0, min(100, payload.progress))
+    if progress > (item.progress or 0):
+        item.progress = progress
+
+    if payload.finished:
+        item.status = "read"
+        item.progress = 100
+    elif item.status == "unread":
+        item.status = "reading"
+
+    item.last_read_at = now_utc()
+    item.updated_at = now_utc()
+    await db.commit()
+    return {"ok": True, "status": item.status, "progress": item.progress}
 
 
 @router.patch("/items/{item_id}", response_model=LibraryItemOut)

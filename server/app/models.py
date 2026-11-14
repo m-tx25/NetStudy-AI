@@ -451,3 +451,107 @@ class ReadingNote(Base):
     page: Mapped[int | None] = mapped_column(Integer, nullable=True)
     content: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+
+
+# ==========================================================================
+# 论文结构化解析（M3）
+#
+# 解析产物与 documents 分开存：documents 是「文件级」状态，下面这些是
+# 「内容级」结构。删除文档时由服务层显式清理（SQLite 默认不启用外键级联）。
+# ==========================================================================
+class PaperSection(Base):
+    __tablename__ = "paper_sections"
+    __table_args__ = (Index("ix_paper_sections_doc_ordinal", "document_id", "ordinal"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    document_id: Mapped[str] = mapped_column(String(64), index=True)
+    # abstract / introduction / method / ... / references / other
+    section_type: Mapped[str] = mapped_column(String(32), index=True)
+    heading: Mapped[str] = mapped_column(String(255), default="")
+    ordinal: Mapped[int] = mapped_column(Integer, default=0)
+    page_start: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    page_end: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    text: Mapped[str] = mapped_column(Text, default="")
+
+
+class PaperReference(Base):
+    __tablename__ = "paper_references"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    document_id: Mapped[str] = mapped_column(String(64), index=True)
+    ordinal: Mapped[int] = mapped_column(Integer, default=0)
+    raw_text: Mapped[str] = mapped_column(Text, default="")
+    doi: Mapped[str] = mapped_column(String(128), default="")
+    year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    title: Mapped[str] = mapped_column(String(512), default="")
+
+
+class PaperAsset(Base):
+    """表格/图表。table 存结构化行（JSON），figure 目前存图注。"""
+
+    __tablename__ = "paper_assets"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    document_id: Mapped[str] = mapped_column(String(64), index=True)
+    kind: Mapped[str] = mapped_column(String(16), default="table", index=True)
+    page: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    caption: Mapped[str] = mapped_column(Text, default="")
+    content_json: Mapped[str] = mapped_column(Text, default="")
+    storage_path: Mapped[str] = mapped_column(Text, default="")
+
+
+class DocumentQuality(Base):
+    __tablename__ = "document_quality"
+
+    document_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    char_count: Mapped[int] = mapped_column(Integer, default=0)
+    page_count: Mapped[int] = mapped_column(Integer, default=0)
+    section_count: Mapped[int] = mapped_column(Integer, default=0)
+    reference_count: Mapped[int] = mapped_column(Integer, default=0)
+    table_count: Mapped[int] = mapped_column(Integer, default=0)
+    figure_count: Mapped[int] = mapped_column(Integer, default=0)
+    garbage_ratio: Mapped[float] = mapped_column(Float, default=0.0)
+    warnings_json: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+
+
+class DocumentMetadata(Base):
+    """解析出的论文元数据（每篇文档一份）。
+
+    与 papers 表的区别：papers 是「检索到的论文元数据」，本表是「从 PDF 正文
+    抽取出来的元数据」，知识库里的文档也能有，不依赖是否收藏进文献库。
+    """
+
+    __tablename__ = "document_metadata"
+
+    document_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    title: Mapped[str] = mapped_column(String(512), default="")
+    authors_json: Mapped[str] = mapped_column(Text, default="[]")
+    doi: Mapped[str] = mapped_column(String(128), default="")
+    year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    abstract: Mapped[str] = mapped_column(Text, default="")
+    venue: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+
+
+class Analysis(Base):
+    """单篇论文的结构化分析结果（按 kind + model 缓存）。"""
+
+    __tablename__ = "analyses"
+    __table_args__ = (
+        UniqueConstraint("document_id", "kind", "model", name="uq_analysis_doc_kind_model"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    document_id: Mapped[str] = mapped_column(String(64), index=True)
+    # summary / background / question / method / pipeline / innovation /
+    # results / limitations / glossary
+    kind: Mapped[str] = mapped_column(String(32), index=True)
+    model: Mapped[str] = mapped_column(String(128), default="")
+    status: Mapped[str] = mapped_column(String(16), default="ready")
+    content_md: Mapped[str] = mapped_column(Text, default="")
+    citations_json: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=now_utc, onupdate=now_utc
+    )

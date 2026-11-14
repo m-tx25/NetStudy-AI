@@ -58,6 +58,12 @@ const routes = [
         meta: { title: '我的文献库' },
       },
       {
+        path: 'papers/:id',
+        name: 'paper',
+        component: () => import('@/views/PaperView.vue'),
+        meta: { title: '论文解析' },
+      },
+      {
         path: 'knowledge',
         name: 'knowledge',
         component: () => import('@/views/KnowledgeView.vue'),

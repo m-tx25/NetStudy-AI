@@ -29,6 +29,7 @@ from app.api import (
     knowledge_bases,
     library,
     literature,
+    papers,
     teams,
 )
 from app.core.config import settings
@@ -195,6 +196,8 @@ for router in (
     literature.router,
     # 个人文献库
     library.router,
+    # 论文结构解析结果（M3）
+    papers.router,
     # 团队密钥挂在 /api/teams/{team_id}/keys 下
     keys.team_router,
 ):

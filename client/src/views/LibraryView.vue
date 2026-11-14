@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   ArrowLeft,
@@ -52,6 +53,7 @@ const drawer = reactive({
 })
 
 const fileInput = ref(null)
+const router = useRouter()
 
 const statusLabels = { unread: '未读', reading: '阅读中', read: '已读' }
 const statusTypes = { unread: 'info', reading: 'warning', read: 'success' }
@@ -109,6 +111,12 @@ function openItem(item) {
   loadCitation(item.id, drawer.citationFormat)
 }
 
+function openPaper(item) {
+  if (!item?.documentId) return
+  drawer.open = false
+  router.push(`/app/papers/${item.documentId}`)
+}
+
 async function loadNotes(itemId) {
   try {
     drawer.notes = await fetchNotes(itemId, { silent: true })
@@ -143,10 +151,6 @@ async function patch(payload) {
   } finally {
     drawer.saving = false
   }
-}
-
-async function setStatus(status) {
-  await patch({ status })
 }
 
 async function toggleTag(tagId) {
@@ -282,7 +286,7 @@ function sourceLabel(source) {
 </script>
 
 <template>
-  <div class="mx-auto max-w-6xl px-4 py-6 md:px-8">
+  <div class="mx-auto h-full min-h-0 w-full max-w-6xl overflow-y-auto scrollbar-thin px-4 py-6 md:px-8">
     <header class="mb-5 flex flex-wrap items-end justify-between gap-3">
       <div>
         <h1 class="text-xl font-semibold app-text">我的文献库</h1>
@@ -416,15 +420,17 @@ function sourceLabel(source) {
 
           <h3 class="mt-5 text-sm font-semibold app-text">阅读状态</h3>
           <div class="mt-2 flex flex-wrap items-center gap-2">
-            <el-button
-              v-for="(label, key) in statusLabels"
-              :key="key"
-              size="small"
-              :type="drawer.item.status === key ? 'primary' : ''"
-              @click="setStatus(key)"
-            >
-              {{ label }}
-            </el-button>
+            <el-tag :type="statusTypes[drawer.item.status]" effect="plain">
+              {{ statusLabels[drawer.item.status] }}
+            </el-tag>
+            <span v-if="drawer.item.progress" class="text-[11px] app-muted">
+              进度 {{ drawer.item.progress }}%
+            </span>
+          </div>
+          <p class="mt-1 text-[11px] leading-5 app-muted">
+            打开论文页即标记「阅读中」，滚动到底部自动标记「已读」。
+          </p>
+          <div class="mt-2">
             <el-select
               :model-value="drawer.item.collectionId"
               placeholder="未分类"
@@ -504,6 +510,9 @@ function sourceLabel(source) {
         </div>
 
         <div class="flex gap-2 border-t app-border p-4">
+          <el-button v-if="drawer.item.hasPdf" type="primary" plain @click="openPaper(drawer.item)">
+            查看解析结构
+          </el-button>
           <el-button class="flex-1" @click="drawer.open = false">关闭</el-button>
           <el-button type="danger" plain :icon="Delete" @click="removeItem">移除</el-button>
         </div>

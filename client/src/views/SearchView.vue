@@ -152,7 +152,7 @@ async function collect(paper) {
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl px-4 py-6 md:px-8">
+  <div class="mx-auto h-full min-h-0 w-full max-w-5xl overflow-y-auto scrollbar-thin px-4 py-6 md:px-8">
     <!-- 标题区 -->
     <header class="mb-5">
       <h1 class="text-xl font-semibold app-text">文献检索</h1>

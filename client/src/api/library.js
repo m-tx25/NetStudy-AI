@@ -68,3 +68,11 @@ export function deleteNote(noteId, config = {}) {
 export function exportCitation(itemId, format) {
   return request.get(`/library/items/${itemId}/citation`, { params: { format }, silent: true })
 }
+
+/**
+ * 上报阅读进度（自动阅读状态）：
+ * 打开论文页 → 阅读中；滚动到接近底部 → 已读。
+ */
+export function reportReading(payload, config = {}) {
+  return request.post('/library/progress', payload, { silent: true, ...config })
+}

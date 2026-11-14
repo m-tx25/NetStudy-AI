@@ -88,3 +88,13 @@ class NoteOut(CamelModel):
     page: int | None = None
     content: str = ""
     created_at: datetime | None = None
+
+
+class ReadingProgressIn(CamelModel):
+    """阅读进度上报：由前端在打开论文页、滚动时自动调用。"""
+
+    document_id: str
+    # 0-100，前端按滚动位置估算
+    progress: int = 0
+    # 是否已读到底部
+    finished: bool = False
