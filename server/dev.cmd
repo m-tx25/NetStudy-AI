@@ -4,6 +4,7 @@ REM  Local dev launcher: Chroma service + backend
 REM
 REM  Usage (run inside the server directory):
 REM      dev.cmd                        start only (Chroma + backend)
+REM      dev.cmd --stop                 SAFE shutdown: backend -> wait -> Chroma
 REM      dev.cmd --check                health check only, do not start
 REM      dev.cmd --reindex              rebuild vector index before start
 REM      dev.cmd --rebuild              backup the old vector DB, start fresh
@@ -12,16 +13,20 @@ REM      dev.cmd --restore              restore the last good snapshot
 REM      dev.cmd --snapshot             copy current DB to the snapshot slot
 REM
 REM  Why the index keeps getting damaged (read this before killing things):
-REM    1. Chroma 1.x writes the HNSW index files AFTER the sqlite rows.
-REM       If the process is force-killed (taskkill /F) or the machine dies in
-REM       that window, sqlite still has the vectors but the *.bin index files
-REM       are missing -> every query fails with "Error loading hnsw index".
+REM    1. Chroma writes sqlite rows FIRST, HNSW index files SECOND.
+REM       Force-killing it (taskkill /F, Task Manager, power loss) between the
+REM       two steps leaves vectors in sqlite but no *.bin index files, and
+REM       every later query fails with "Error loading hnsw index".
+REM       That state cannot be repaired by writing more data.
 REM    2. Two Chroma processes on the same data dir WILL corrupt it.
 REM    3. The system proxy (Clash) can hijack 127.0.0.1:8000 and return 502,
-REM       which looks like corruption but is not (see 8.5 in README).
+REM       which looks like corruption but is not (see docs/vectorstore.md).
+REM
+REM  The danger window is ONLY while writes are in flight (upload / reindex).
+REM  An idle Chroma can be closed any way you like.
 REM
 REM  This script therefore:
-REM    - waits 8 seconds before stopping Chroma, so pending writes can flush;
+REM    - --stop waits for the backend to exit, then 10s for Chroma to flush;
 REM    - keeps a snapshot after every successful reindex;
 REM    - refuses to start a second instance on the same port.
 REM
@@ -45,12 +50,14 @@ set "DO_REBUILD="
 set "DO_RESTORE="
 set "DO_SNAPSHOT="
 set "DO_CHECK="
+set "DO_STOP="
 for %%A in (%*) do (
     if /i "%%A"=="--reindex" set "DO_REINDEX=1"
     if /i "%%A"=="--rebuild" set "DO_REBUILD=1"
     if /i "%%A"=="--restore" set "DO_RESTORE=1"
     if /i "%%A"=="--snapshot" set "DO_SNAPSHOT=1"
     if /i "%%A"=="--check" set "DO_CHECK=1"
+    if /i "%%A"=="--stop" set "DO_STOP=1"
 )
 
 if not exist "%CHROMA_EXE%" (
@@ -60,6 +67,20 @@ if not exist "%CHROMA_EXE%" (
     exit /b 1
 )
 if not exist "%~dp0data" mkdir "%~dp0data"
+
+REM ---------- 0aa) SAFE shutdown ----------
+if defined DO_STOP (
+    echo [dev] Stopping backend on port %BACKEND_PORT% ...
+    call :stop_port %BACKEND_PORT%
+    echo [dev] Waiting 10s for Chroma to flush pending writes ...
+    "%PY%" -c "import time;time.sleep(10)" >nul 2>&1
+    echo [dev] Stopping Chroma on port %CHROMA_PORT% ...
+    call :stop_port %CHROMA_PORT%
+    echo.
+    echo [dev] Stopped safely. Pending writes are flushed.
+    echo [dev] Tip: run "dev.cmd --check" if you want to verify DB health.
+    exit /b 0
+)
 
 REM ---------- 0a) health check only ----------
 if defined DO_CHECK (
@@ -81,7 +102,7 @@ if defined DO_RESTORE (
     )
     netstat -ano | findstr ":%CHROMA_PORT% " | findstr LISTENING >nul
     if not errorlevel 1 (
-        echo [dev] ERROR: Chroma is running. Stop it first (close its window).
+        echo [dev] ERROR: Chroma is running. Run "dev.cmd --stop" first.
         pause
         exit /b 1
     )
@@ -123,7 +144,7 @@ netstat -ano | findstr ":%CHROMA_PORT% " | findstr LISTENING >nul
 if not errorlevel 1 goto chroma_ok
 set /a tries+=1
 if !tries! geq 30 goto chroma_fail
-timeout /t 1 >nul
+"%PY%" -c "import time;time.sleep(1)" >nul 2>&1
 goto waitloop
 
 :chroma_fail
@@ -183,15 +204,42 @@ set "RC=%ERRORLEVEL%"
 echo.
 echo [dev] Backend exited with code %RC%
 echo [dev] Waiting 8s so Chroma can flush pending writes to disk ...
-timeout /t 8 /nobreak >nul
+"%PY%" -c "import time;time.sleep(8)" >nul 2>&1
 echo [dev] Stopping Chroma
-for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":%CHROMA_PORT% " ^| findstr LISTENING') do (
-    taskkill /PID %%P >nul 2>&1
-)
-timeout /t 3 /nobreak >nul
-for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":%CHROMA_PORT% " ^| findstr LISTENING') do (
-    echo [dev] Still alive, forcing PID %%P
-    taskkill /F /PID %%P >nul 2>&1
-)
+call :stop_port %CHROMA_PORT%
+echo [dev] Done.
 endlocal
 exit /b %RC%
+
+REM -------------------------------------------------------------------
+REM  :stop_port <port>
+REM  Look the PID up once, try a normal terminate, then force it.
+REM  Deliberately avoids a per-second netstat poll: netstat is slow here
+REM  (a 15-round poll took 279 seconds once, which is unusable).
+REM -------------------------------------------------------------------
+:stop_port
+set "SPORT=%~1"
+set "SPID="
+for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":%SPORT% " ^| findstr LISTENING') do set "SPID=%%P"
+if not defined SPID (
+    echo [dev] Port %SPORT% already free
+    exit /b 0
+)
+echo [dev] Stopping PID !SPID! on port %SPORT% ...
+taskkill /PID !SPID! >nul 2>&1
+"%PY%" -c "import time;time.sleep(1)" >nul 2>&1
+netstat -ano | findstr ":%SPORT% " | findstr LISTENING >nul
+if errorlevel 1 (
+    echo [dev] Port %SPORT% free
+    exit /b 0
+)
+echo [dev] Graceful stop did not work, forcing PID !SPID! ...
+taskkill /F /PID !SPID! >nul 2>&1
+"%PY%" -c "import time;time.sleep(2)" >nul 2>&1
+netstat -ano | findstr ":%SPORT% " | findstr LISTENING >nul
+if errorlevel 1 (
+    echo [dev] Port %SPORT% free
+) else (
+    echo [dev] WARNING: port %SPORT% still busy
+)
+exit /b 0
