@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import Any
 
 from sqlalchemy import select
@@ -21,6 +22,28 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models import Document, KnowledgeBase, now_utc
 from app.services import chunking, diagnostics, keyring, parser, vectorstore
+
+
+def _page_number(value: Any) -> int | None:
+    """把解析元数据里的页码解析成 1 基整数。
+
+    PyPDFLoader 给的 `page_label` 是**字符串**（"1"），
+    而旧代码只认 int/float，于是所有 PDF 的页码都被丢掉，
+    引用里只剩文档名（实测：2850 条切片全部 page=None）。
+    这里字符串按第一个数字提取，数字保持原样。
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, str):
+        match = re.search(r"\d+", value)
+        if not match:
+            return None
+        value = match.group(0)
+    try:
+        page = int(value)
+    except (TypeError, ValueError):
+        return None
+    return page if page > 0 else None
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +112,9 @@ async def _process(document_id: str, reindex: bool) -> dict[str, Any]:
             payload: list[tuple[int, str, int | None, str]] = []
             for ordinal, chunk in enumerate(chunks):
                 metadata = chunk.metadata or {}
-                page = metadata.get("page_label") or metadata.get("page")
+                page = metadata.get("page_label")
+                if page is None:
+                    page = metadata.get("page")
                 # 章节标题由 parser 识别并放进元数据（PDF 的「3 Method」这类标题），
                 # 引用时展示「第 N 章」，比只有页码更好定位。
                 section = str(metadata.get("section") or "")
@@ -97,7 +122,7 @@ async def _process(document_id: str, reindex: bool) -> dict[str, Any]:
                     (
                         ordinal,
                         chunk.page_content or "",
-                        int(page) if isinstance(page, (int, float)) and page else None,
+                        _page_number(page),
                         section,
                     )
                 )
