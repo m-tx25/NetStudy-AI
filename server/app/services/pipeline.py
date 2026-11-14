@@ -86,15 +86,19 @@ async def _process(document_id: str, reindex: bool) -> dict[str, Any]:
                 raise parser.ParseError("切片结果为空，请检查文档内容")
 
             # 3) 写入 ChromaDB（embedding 在此步由向量模型完成）
-            payload: list[tuple[int, str, int | None]] = []
+            payload: list[tuple[int, str, int | None, str]] = []
             for ordinal, chunk in enumerate(chunks):
                 metadata = chunk.metadata or {}
                 page = metadata.get("page_label") or metadata.get("page")
+                # 章节标题由 parser 识别并放进元数据（PDF 的「3 Method」这类标题），
+                # 引用时展示「第 N 章」，比只有页码更好定位。
+                section = str(metadata.get("section") or "")
                 payload.append(
                     (
                         ordinal,
                         chunk.page_content or "",
                         int(page) if isinstance(page, (int, float)) and page else None,
+                        section,
                     )
                 )
 

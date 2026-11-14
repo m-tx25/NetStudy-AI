@@ -51,9 +51,19 @@ const sources = computed(() =>
         knowledgeBaseName: source.knowledgeBaseName || source.knowledge_base_name || '',
         score: source.score ?? source.similarity,
         page: source.page,
+        // 章节（解析阶段识别，如「2.1 Models」）；识别不到就是空串
+        section: source.section || '',
         snippet: source.snippet || source.content || source.text || '',
       }))
     : [],
+)
+
+/**
+ * 多篇论文问答的覆盖提示：用户选了 N 篇，但其中若干篇没有召回到依据。
+ * 不提示的话，用户会默认「这几篇都支持这个结论」—— 这是最危险的误解。
+ */
+const missingDocuments = computed(() =>
+  Array.isArray(props.message.missingDocuments) ? props.message.missingDocuments : [],
 )
 
 const expandedSource = computed(
@@ -199,6 +209,20 @@ async function handleContentClick(event) {
             已停止生成
           </p>
 
+          <!-- 多篇论文问答：勾选了论文，但其中有几篇没召回到依据 -->
+          <div
+            v-if="missingDocuments.length"
+            class="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-300"
+          >
+            <p class="font-medium">
+              所选的 {{ missingDocuments.length }} 篇论文中未找到相关依据：
+            </p>
+            <p class="mt-1 leading-5">
+              {{ missingDocuments.map((name) => `《${name}》`).join('、') }}
+              —— 上面的回答没有引用它们，不要当成这几篇的结论。
+            </p>
+          </div>
+
           <!-- 引用来源 -->
           <div v-if="sources.length" class="mt-3">
             <div class="flex flex-wrap items-center gap-1.5">
@@ -238,6 +262,9 @@ async function handleContentClick(event) {
                     [{{ expandedSource.index }}] {{ expandedSource.documentName }}
                     <span v-if="expandedSource.page" class="font-normal app-muted">
                       · 第 {{ expandedSource.page }} 页
+                    </span>
+                    <span v-if="expandedSource.section" class="font-normal app-muted">
+                      · {{ expandedSource.section }}
                     </span>
                   </span>
                   <span class="flex items-center gap-2 app-muted">
