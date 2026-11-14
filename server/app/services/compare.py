@@ -630,7 +630,18 @@ def _humanize_refs(text: str, profiles: list[PaperProfile]) -> str:
     for profile in profiles:
         if not profile.document_id:
             continue
-        text = text.replace(profile.document_id, f"《{_short_title(profile)}》")
+        label = _short_title(profile)
+        # 模型常写 `doc_xxx（2021）`：先把「id + 年份」整体替换掉，
+        # 否则替换完会变成「《标题 (2021)》（2021）」，年份重复两遍。
+        if profile.year:
+            for year_text in (
+                f"{profile.document_id}（{profile.year}）",
+                f"{profile.document_id}({profile.year})",
+                f"{profile.document_id} ({profile.year})",
+                f"{profile.document_id} （{profile.year}）",
+            ):
+                text = text.replace(year_text, f"《{label}》")
+        text = text.replace(profile.document_id, f"《{label}》")
     return text
 
 
