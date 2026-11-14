@@ -67,6 +67,8 @@
 - [开发报告](docs/development-report.md) — 已完成工作、技术选型、验证记录、已知问题与下一步计划
 - [多篇论文对比](docs/compare.md) — 两阶段设计、取样策略、防幻觉手段、接口与实测数据
 - [学术智能问答](docs/qa.md) — 论文级检索范围、按篇配额、证据覆盖清单、章节引用
+
+- [向量库修复手册](docs/vectorstore.md) — 为什么坏、怎么体检、快照与一键恢复
 - [团队与密钥](docs/teams.md) — 权限矩阵、入队与审核流程、团队知识库、密钥作用域与生效规则
 - [前端接口与 SSE 协议约定](docs/frontend-api.md) — REST 接口、`text/event-stream` 事件格式、数据模型
 - [前端说明](client/README.md) — 目录结构、功能清单、自检脚本
@@ -321,6 +323,9 @@ npm run dev
 | `.\dev.cmd --reindex` | 启动前重建全部文档的向量索引 |
 | `.\dev.cmd --rebuild` | 先把旧向量库备份为 `chroma_db.broken-<时间戳>` 再启动 |
 | `.\dev.cmd --rebuild --reindex` | **向量库索引真损坏时的一键恢复** |
+| `.\dev.cmd --check` | **向量库体检**：区分「连不上 / 索引损坏 / 空库」 |
+| `.\dev.cmd --restore` | 从快照恢复（几秒，不花 embedding 费用） |
+| `.\dev.cmd --snapshot` | 手动把当前向量库复制为快照 |
 
 > `dev.cmd` 是**纯 ASCII** 的：`cmd.exe` 按 GBK 读 `.cmd`，
 > UTF-8 中文注释会被拆成命令（表现为 `'index' 不是内部或外部命令`）。
