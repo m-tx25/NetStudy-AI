@@ -64,6 +64,12 @@ const routes = [
         meta: { title: '论文对比' },
       },
       {
+        path: 'reports',
+        name: 'reports',
+        component: () => import('@/views/ReportsView.vue'),
+        meta: { title: '成果导出' },
+      },
+      {
         path: 'research',
         name: 'research',
         component: () => import('@/views/ResearchView.vue'),

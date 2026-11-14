@@ -28,6 +28,7 @@ from app.api import (
     health,
     keys,
     knowledge_bases,
+    reports,
     research,
     teams,
 )
@@ -198,6 +199,8 @@ for router in (
     comparisons.paper_router,
     # 学术研究辅助（模块七）
     research.router,
+    # 学术成果生成与导出（模块八）
+    reports.router,
 ):
     app.include_router(router, prefix=settings.API_PREFIX)
 

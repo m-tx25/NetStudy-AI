@@ -216,3 +216,36 @@ def run_research_task(self, brief_id: str) -> dict[str, Any]:
     from app.services.research import run_brief
 
     return run_async(run_brief(brief_id))
+
+def dispatch_report(report_id: str) -> dict[str, Any]:
+    """把「生成报告」投递到后台（与文档解析同一套语义）。"""
+    if settings.CELERY_TASK_ALWAYS_EAGER:
+        if settings.CELERY_EAGER_ASYNC:
+            from app.services.reports import run_report
+
+            task = asyncio.create_task(run_report(report_id))
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
+            return {"queued": True, "mode": "eager-async"}
+        run_async(_run_report_sync(report_id))
+        return {"queued": False, "mode": "eager"}
+
+    try:
+        run_report_task.delay(report_id)
+        return {"queued": True, "mode": "celery"}
+    except Exception as exc:
+        logger.warning("报告任务投递失败：%s", exc)
+        return {"queued": False, "mode": "failed", "error": str(exc)}
+
+
+async def _run_report_sync(report_id: str) -> None:
+    from app.services.reports import run_report
+
+    await run_report(report_id)
+
+
+@celery_app.task(name="app.tasks.run_report", bind=True, max_retries=1)
+def run_report_task(self, report_id: str) -> dict[str, Any]:
+    from app.services.reports import run_report
+
+    return run_async(run_report(report_id))

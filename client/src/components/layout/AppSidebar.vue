@@ -7,6 +7,7 @@ import {
   Close,
   DataAnalysis,
   Delete,
+  DocumentCopy,
   Edit,
   Loading,
   Moon,
@@ -281,6 +282,14 @@ async function handleCommand(command) {
         <span class="flex-1 text-left">论文对比</span>
       </button>
 
+      <button
+        class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm app-text transition app-hover"
+        :class="{ 'app-active': route.path.startsWith('/app/reports') }"
+        @click="go('/app/reports')"
+      >
+        <el-icon class="text-base"><DocumentCopy /></el-icon>
+        <span class="flex-1 text-left">成果导出</span>
+      </button>
       <button
         class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm app-text transition app-hover"
         :class="{ 'app-active': route.path.startsWith('/app/research') }"

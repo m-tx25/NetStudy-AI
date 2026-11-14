@@ -444,3 +444,46 @@ class ResearchBrief(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=now_utc, onupdate=now_utc
     )
+
+class Report(Base):
+    """一份可导出的学术材料（模块八）。
+
+    kind 取值：
+      - ``reading``   单篇论文阅读报告
+      - ``review``    多篇文献综述初稿
+      - ``status``    研究现状整理（主题 / 方法 / 阶段）
+      - ``comparison``多论文对比报告（内容取自已有 Comparison，不重新生成）
+
+    内容统一存 Markdown（``content_md``），导出 DOCX / HTML / PDF 都由它转换，
+    保证「预览看到的」与「导出的」是同一份内容。
+
+    引用溯源：``sources_json`` 存本报告实际引用到的论文（documentId + 页码），
+    导出时据此生成参考文献表，**不会凭空出现未选中的文献**。
+    """
+
+    __tablename__ = "reports"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    team_id: Mapped[str] = mapped_column(String(64), default="", index=True)
+
+    kind: Mapped[str] = mapped_column(String(32), index=True)
+    title: Mapped[str] = mapped_column(String(512), default="")
+    document_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+    # comparison kind 时记录来源对比 id
+    comparison_id: Mapped[str] = mapped_column(String(64), default="")
+
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    stage: Mapped[str] = mapped_column(String(32), default="cards")
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str] = mapped_column(Text, default="")
+
+    content_md: Mapped[str] = mapped_column(Text, default="")
+    # 引用到的论文与页码，用于生成参考文献与溯源
+    sources_json: Mapped[str] = mapped_column(Text, default="[]")
+    refs_json: Mapped[str] = mapped_column(Text, default="{}")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=now_utc, onupdate=now_utc
+    )
