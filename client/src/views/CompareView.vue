@@ -70,7 +70,9 @@ async function ensurePaperMeta(ids) {
   await Promise.all(
     missing.map(async (id) => {
       try {
-        const profile = await getPaperProfile(id)
+        // silent：卡片是后台抽的，查询时可能还不存在，404 属于正常状态，
+        // 不该弹「接口不存在」打扰用户（标题会有文件名兜底）。
+        const profile = await getPaperProfile(id, { silent: true })
         paperMeta.value[id] = { title: profile.title, year: profile.year }
       } catch {
         // 卡片可能已被清理（换库/删文档），用文件名兜底即可，不打扰用户
@@ -172,9 +174,11 @@ async function exportReport() {
 const papers = computed(() => current.value?.documentIds || [])
 
 watch(
-  () => current.value?.id,
-  (id) => {
-    if (id) ensurePaperMeta(current.value?.documentIds)
+  () => [current.value?.id, current.value?.status],
+  ([id, status]) => {
+    // 卡片由后台任务抽取：pending/running 阶段还没有 profile 记录，
+    // 这时去查必然是 404。等 ready 再补标题，省掉无意义的请求。
+    if (id && status === 'ready') ensurePaperMeta(current.value?.documentIds)
   },
 )
 

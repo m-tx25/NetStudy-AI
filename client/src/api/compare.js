@@ -35,8 +35,8 @@ export function downloadReport(id) {
   })
 }
 
-export function getPaperProfile(documentId) {
-  return request.get(`/papers/${documentId}`)
+export function getPaperProfile(documentId, config = {}) {
+  return request.get(`/papers/${documentId}`, config)
 }
 
 export function refreshPaperProfile(documentId) {
