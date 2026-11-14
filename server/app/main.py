@@ -28,6 +28,11 @@ from app.api import (
     health,
     keys,
     knowledge_bases,
+    library,
+    literature,
+    papers,
+    reports,
+    research,
     teams,
 )
 from app.core.config import settings
@@ -190,11 +195,21 @@ for router in (
     chat.router,
     teams.router,
     keys.router,
+    # 学术检索（外部数据源）
+    literature.router,
+    # 个人文献库
+    library.router,
+    # 论文结构解析结果（M3）
+    papers.router,
     # 团队密钥挂在 /api/teams/{team_id}/keys 下
     keys.team_router,
     # 多篇论文智能对比（模块五）
     comparisons.router,
     comparisons.paper_router,
+    # 学术研究辅助（模块七）
+    research.router,
+    # 学术成果生成与导出（模块八）
+    reports.router,
 ):
     app.include_router(router, prefix=settings.API_PREFIX)
 

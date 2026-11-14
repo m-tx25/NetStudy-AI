@@ -100,6 +100,21 @@ def _load_with_langchain(path: Path, loader_name: str) -> list[Document] | None:
 # --------------------------------------------------------------------------
 # 内置解析器（不依赖 unstructured，作为回退与补充）
 # --------------------------------------------------------------------------
+def _normalize_pdf_lines(text: str) -> str:
+    """压缩 PDF 文本里的多余空白。
+
+    为什么需要：`extraction_mode="layout"` 会用空格模拟版面缩进/对齐，
+    一行里可能出现十几连空格；不压缩会让标题、摘要显示得支离破碎。
+    但保留换行——换行是段落与章节边界的信号。
+    """
+    lines = []
+    for line in (text or "").splitlines():
+        cleaned = " ".join(line.split())
+        if cleaned:
+            lines.append(cleaned)
+    return "\n".join(lines)
+
+
 def _parse_pdf_builtin(path: Path) -> Pages:
     try:
         from pypdf import PdfReader
@@ -109,10 +124,21 @@ def _parse_pdf_builtin(path: Path) -> Pages:
     reader = PdfReader(str(path))
     pages: Pages = []
     for index, page in enumerate(reader.pages, start=1):
+        text = ""
+        # layout 模式按坐标还原行，能修掉「一个词一行」的排版（常见于双栏/LaTeX PDF）；
+        # 老版本 pypdf 或异常文档退回默认模式，保证能用。
         try:
-            pages.append((index, _clean(page.extract_text() or "")))
+            text = page.extract_text(extraction_mode="layout") or ""
+        except (TypeError, ValueError):
+            text = ""
         except Exception:
-            pages.append((index, ""))
+            text = ""
+        if not text.strip():
+            try:
+                text = page.extract_text() or ""
+            except Exception:
+                text = ""
+        pages.append((index, _clean(_normalize_pdf_lines(text))))
     return pages
 
 
@@ -347,9 +373,11 @@ _BUILTIN = {
     ".xls": _parse_xlsx,
 }
 
-# LangChain 加载器优先表（与协作者 rag 模块同源）
+# LangChain 加载器优先表（与协作者 rag 模块同源）。
+# 注意：**不再让 PDF 走 PyPDFLoader** —— 它用 pypdf 默认模式，遇到 LaTeX/双栏
+# 排版会「一个词一行」，标题、摘要、章节识别全被破坏。内置解析器用
+# extraction_mode="layout" 按坐标还原行，效果明显更好。
 _LANGCHAIN_FIRST = {
-    ".pdf": "pdf",
     ".docx": "docx",
     ".md": "markdown",
     ".markdown": "markdown",

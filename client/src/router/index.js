@@ -46,6 +46,24 @@ const routes = [
         meta: { title: '智能问答' },
       },
       {
+        path: 'search',
+        name: 'search',
+        component: () => import('@/views/SearchView.vue'),
+        meta: { title: '文献检索' },
+      },
+      {
+        path: 'library',
+        name: 'library',
+        component: () => import('@/views/LibraryView.vue'),
+        meta: { title: '我的文献库' },
+      },
+      {
+        path: 'papers/:id',
+        name: 'paper',
+        component: () => import('@/views/PaperView.vue'),
+        meta: { title: '论文解析' },
+      },
+      {
         path: 'knowledge',
         name: 'knowledge',
         component: () => import('@/views/KnowledgeView.vue'),
@@ -62,6 +80,18 @@ const routes = [
         name: 'compare',
         component: () => import('@/views/CompareView.vue'),
         meta: { title: '论文对比' },
+      },
+      {
+        path: 'reports',
+        name: 'reports',
+        component: () => import('@/views/ReportsView.vue'),
+        meta: { title: '成果导出' },
+      },
+      {
+        path: 'research',
+        name: 'research',
+        component: () => import('@/views/ResearchView.vue'),
+        meta: { title: '研究助手' },
       },
       {
         path: 'settings',

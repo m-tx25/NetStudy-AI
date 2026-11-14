@@ -33,6 +33,8 @@
 | 批量删除 | 文档列表支持多选批量删除；逐条判定权限，返回「已删除 / 无权限 / 不存在」三类结果，部分失败不会让整批失败 |
 | **多篇论文对比** | 选 2~6 篇论文，自动归纳对比维度并逐维度横向比较：结论、矩阵（带页码）、演进时间轴、研究空白、场景胜负，可导出 Markdown 报告。详见 [docs/compare.md](docs/compare.md) |
 | **学术智能问答** | 按论文（单篇/多篇）限定检索范围，按篇配额召回保证每篇都有发言权；引用带论文名 + 章节 + 页码 + 片段；所选论文中没找到依据的会明确列出。详见 [docs/qa.md](docs/qa.md) |
+| **研究助手** | 基于所选论文生成研究方向、可研究问题与研究思路、技术路线与阶段计划；每条都标注「文献依据 / AI 假设 / 建议」，创新空间只做相对判断并固定附免责说明。详见 [docs/research.md](docs/research.md) |
+| **成果导出** | 论文阅读报告 / 文献综述初稿 / 研究现状整理 / 对比报告；导出 Markdown、Word（真 DOCX）、PDF（打印视图另存）；参考文献支持 GB/T 7714 / APA / IEEE，只从真实论文生成、不编造 DOI。详见 [docs/export.md](docs/export.md) |
 | 团队协作 | 团队 CRUD、邀请码与搜索加入、QQ 群式入队审核、角色（负责人/管理员/成员）、负责人转让、管理员直接拉人 |
 | API 密钥 | **团队级 + 个人级**双作用域（智谱 / DeepSeek / OpenAI / 自定义），加密存储、只显示掩码，按知识库归属自动选用 |
 | 模型选择 | 可在多个生成模型间切换（服务端配置 + 自备密钥），生成模型与向量化模型解耦 |
@@ -59,6 +61,12 @@
 | 多篇论文对比 | 对比矩阵 |
 | --- | --- |
 | ![论文对比](docs/screenshots/compare/01-论文对比-结果.png) | ![对比矩阵](docs/screenshots/compare/02-对比矩阵.png) |
+| 研究助手 | 创新空间与计划 |
+| --- | --- |
+| ![研究助手](docs/screenshots/research/01-研究助手-方向.png) | ![创新空间](docs/screenshots/research/03-创新空间与计划.png) |
+| 成果导出 | 参考文献格式 |
+| --- | --- |
+| ![成果导出](docs/screenshots/reports/01-成果导出-报告预览.png) | ![参考文献](docs/screenshots/reports/02-参考文献格式.png) |
 
 更多截图见 [docs/screenshots](docs/screenshots)（含 [团队功能全套](docs/screenshots/teams)、[论文对比](docs/screenshots/compare)）。
 
@@ -67,6 +75,8 @@
 - [开发报告](docs/development-report.md) — 已完成工作、技术选型、验证记录、已知问题与下一步计划
 - [多篇论文对比](docs/compare.md) — 两阶段设计、取样策略、防幻觉手段、接口与实测数据
 - [学术智能问答](docs/qa.md) — 论文级检索范围、按篇配额、证据覆盖清单、章节引用
+- [学术研究辅助](docs/research.md) — 文献依据与 AI 假设如何分离、研究方向/问题/路线/计划的生成方式
+- [成果生成与导出](docs/export.md) — 四类材料、三种导出格式、不伪造文献的具体措施
 
 - [向量库修复手册](docs/vectorstore.md) — 为什么坏、怎么体检、快照与一键恢复
 - [团队与密钥](docs/teams.md) — 权限矩阵、入队与审核流程、团队知识库、密钥作用域与生效规则
@@ -552,6 +562,9 @@ $env:API_BASE='http://你的域名/api'
 | `server/` | `.\.venv\Scripts\python.exe tests\verify_byok_deploy.py` | **上线验收**：用户自备 Key 是否真生效（18 项，不消耗额度） |
 | `server/` | `.\.venv\Scripts\python.exe tests\verify_upload_dedup.py` | 上传去重 + 批量删除验收（21 项） |
 | `server/` | `.\.venv\Scripts\python.exe tests\verify_compare.py` | **多篇论文对比验收**（28 项，需三篇论文 PDF） |
+| `server/` | `.\.venv\Scripts\python.exe tests\verify_research.py` | **研究辅助验收**：结构完整 / 证据与假设分离 / 免责说明（22 项） |
+| `server/` | `.\.venv\Scripts\python.exe tests\verify_reports.py` | **成果导出验收**：三类生成 / 引用溯源 / 三种参考文献 / 三种导出（33 项） |
+| `server/` | `.\.venv\Scripts\python.exe tests\verify_qa_paper.py` | **学术问答验收**：论文级范围 / 覆盖清单 / 连续对话（12 项，向量不可用时自动跳过 2 项） |
 | `server/` | `.\.venv\Scripts\python.exe -m pytest tests\test_units.py -q` | 纯单元测试（29 项，不连数据库，CI 同款） |
 | `server/` | `.\.venv\Scripts\python.exe cleanup_test_data.py` | 清理自动化测试留下的账号/团队（默认 dry-run，`--yes` 才执行） |
 | `server/` | `.\.venv\Scripts\python.exe prune_orphan_vectors.py` | 清理数据库已删但 Chroma 仍残留的切片（默认 dry-run） |
@@ -876,6 +889,9 @@ git push origin feat/你的功能
 | 权限收口 | `cd server && .\.venv\Scripts\python.exe tests\verify_permissions.py` | 18/18 |
 | 上传去重 / 批量删除 | `cd server && .\.venv\Scripts\python.exe tests\verify_upload_dedup.py` | 21/21 |
 | 多篇论文对比 | `cd server && .\.venv\Scripts\python.exe tests\verify_compare.py` | 28/28 |
+| 研究助手 | `cd server && .\.venv\Scripts\python.exe tests\verify_research.py` | 22/22 |
+| 成果导出 | `cd server && .\.venv\Scripts\python.exe tests\verify_reports.py` | 33/33 |
+| 学术问答 | `cd server && .\.venv\Scripts\python.exe tests\verify_qa_paper.py` | 12/12 |
 | 清理逻辑 | `cd server && .\.venv\Scripts\python.exe tests\verify_cleanup.py` | 12/12 |
 | BYOK（上线前） | `cd server && .\.venv\Scripts\python.exe tests\verify_byok_deploy.py` | 18/18 |
 | 前端 e2e | `cd client && node scripts/e2e-teams.mjs` | 24/24 |

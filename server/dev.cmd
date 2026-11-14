@@ -51,13 +51,20 @@ set "DO_RESTORE="
 set "DO_SNAPSHOT="
 set "DO_CHECK="
 set "DO_STOP="
+set "DO_REPAIR="
+set "STOP_AFTER_SNAPSHOT="
 for %%A in (%*) do (
     if /i "%%A"=="--reindex" set "DO_REINDEX=1"
     if /i "%%A"=="--rebuild" set "DO_REBUILD=1"
     if /i "%%A"=="--restore" set "DO_RESTORE=1"
-    if /i "%%A"=="--snapshot" set "DO_SNAPSHOT=1"
+    if /i "%%A"=="--snapshot" (
+        set "DO_SNAPSHOT=1"
+        REM snapshot only: copy then exit, do not fall through to starting backend
+        set "STOP_AFTER_SNAPSHOT=1"
+    )
     if /i "%%A"=="--check" set "DO_CHECK=1"
     if /i "%%A"=="--stop" set "DO_STOP=1"
+    if /i "%%A"=="--repair" set "DO_REPAIR=1"
 )
 
 if not exist "%CHROMA_EXE%" (
@@ -67,6 +74,15 @@ if not exist "%CHROMA_EXE%" (
     exit /b 1
 )
 if not exist "%~dp0data" mkdir "%~dp0data"
+
+REM ---------- 0zz) repair index without re-embedding ----------
+if defined DO_REPAIR (
+    "%PY%" repair_chroma.py
+    set "RC=!ERRORLEVEL!"
+    echo.
+    pause
+    exit /b !RC!
+)
 
 REM ---------- 0aa) SAFE shutdown ----------
 if defined DO_STOP (
@@ -128,6 +144,16 @@ if defined DO_REBUILD (
 )
 if not exist "%DATA_DIR%" mkdir "%DATA_DIR%"
 
+REM ---------- 0d) give Chroma a writable TEMP ----------
+REM ???Chroma 1.x ?????? chroma.sqlite3??? SQLite ???
+REM ?????????? TEMP ?????????????
+REM   MigrationError(SqliteError { code: 14, message: "unable to open database file" })
+REM ?????? 16KB ??? sqlite ???????????????
+REM ? TEMP/TMP ????????????????????????
+if not exist "%~dp0data\tmp" mkdir "%~dp0data\tmp"
+set "TEMP=%~dp0data\tmp"
+set "TMP=%~dp0data\tmp"
+
 REM ---------- 1) is Chroma already running? ----------
 netstat -ano | findstr ":%CHROMA_PORT% " | findstr LISTENING >nul
 if not errorlevel 1 (
@@ -136,6 +162,11 @@ if not errorlevel 1 (
 )
 
 echo [dev] Starting Chroma (log: data\chroma.log) ...
+REM Self-heal: a force-killed Chroma leaves index_metadata.pickle without the
+REM matching *.bin files, which makes the next start fail with
+REM "Error loading hnsw index". Dropping the stale pickle lets Chroma rebuild
+REM the index from sqlite - no re-embedding, no cost.
+"%PY%" repair_chroma.py --prepare
 start "chroma" /b "%CHROMA_EXE%" run --path "%DATA_DIR%" --port %CHROMA_PORT% > "%CHROMA_LOG%" 2>&1
 
 set /a tries=0
@@ -182,6 +213,11 @@ echo.
 :maybe_snapshot
 if not defined DO_SNAPSHOT goto backend
 
+REM ????? Chroma ??????SQLite ?? WAL ??????????????
+REM ????????????????? ? ? ? ??????????????????
+echo [dev] Stopping Chroma so the snapshot is consistent ...
+call :stop_port %CHROMA_PORT%
+
 if exist "%SNAP_DIR%" rd /s /q "%SNAP_DIR%"
 echo [dev] Snapshot: %SNAP_DIR%
 robocopy "%DATA_DIR%" "%SNAP_DIR%" /MIR /NFL /NDL /NJH /NJS /NC /NS >nul
@@ -190,6 +226,27 @@ if errorlevel 8 (
 ) else (
     echo [dev] Snapshot saved.
 )
+
+if defined STOP_AFTER_SNAPSHOT (
+    echo [dev] Done - snapshot only, nothing else started.
+    exit /b 0
+)
+
+echo [dev] Restarting Chroma ...
+start "chroma" /b "%CHROMA_EXE%" run --path "%DATA_DIR%" --port %CHROMA_PORT% > "%CHROMA_LOG%" 2>&1
+set /a tries2=0
+:snap_wait
+netstat -ano | findstr ":%CHROMA_PORT% " | findstr LISTENING >nul
+if not errorlevel 1 goto snap_ok
+set /a tries2+=1
+if !tries2! geq 30 (
+    echo [dev] WARNING: Chroma did not come back within 30s
+    goto backend
+)
+"%PY%" -c "import time;time.sleep(1)" >nul 2>&1
+goto snap_wait
+:snap_ok
+echo [dev] Chroma ready again: http://127.0.0.1:%CHROMA_PORT%
 echo.
 
 :backend

@@ -317,6 +317,246 @@ class ApiKey(Base):
         DateTime, default=now_utc, onupdate=now_utc
     )
 
+
+# ==========================================================================
+# 学术文献（外部检索）
+#
+# papers 存「外部数据源发现的论文」元数据，是导入个人文献库之前的落点；
+# 与 documents 的区别：documents 是**有实体文件、可解析可检索**的文档，
+# papers 可能只有摘要和跳转链接（非开放获取论文不抓全文）。
+# ==========================================================================
+class Paper(Base):
+    __tablename__ = "papers"
+    __table_args__ = (
+        UniqueConstraint("source", "source_id", name="uq_paper_source"),
+        Index("ix_papers_title", "title"),
+    )
+
+    # 统一 id：`<source>:<source_id>`
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    source: Mapped[str] = mapped_column(String(32), index=True)
+    source_id: Mapped[str] = mapped_column(String(255), index=True)
+    doi: Mapped[str] = mapped_column(String(128), default="", index=True)
+    title: Mapped[str] = mapped_column(String(512), default="")
+    abstract: Mapped[str] = mapped_column(Text, default="")
+    # JSON：作者列表 / 研究领域列表
+    authors_json: Mapped[str] = mapped_column(Text, default="[]")
+    fields_json: Mapped[str] = mapped_column(Text, default="[]")
+    venue: Mapped[str] = mapped_column(String(255), default="")
+    year: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    cited_by: Mapped[int] = mapped_column(Integer, default=0)
+    # 开放获取：只有 is_oa 且 pdf_url 可用的才允许下载全文
+    is_oa: Mapped[bool] = mapped_column(Boolean, default=False)
+    pdf_url: Mapped[str] = mapped_column(Text, default="")
+    landing_url: Mapped[str] = mapped_column(Text, default="")
+    type: Mapped[str] = mapped_column(String(32), default="article")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=now_utc, onupdate=now_utc
+    )
+
+
+class SearchLog(Base):
+    """检索行为日志：用于统计与后续「热门检索/推荐」的数据基础。"""
+
+    __tablename__ = "search_logs"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64), default="", index=True)
+    query_json: Mapped[str] = mapped_column(Text, default="")
+    sources: Mapped[str] = mapped_column(String(255), default="")
+    result_count: Mapped[int] = mapped_column(Integer, default=0)
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
+
+
+# ==========================================================================
+# 个人文献库
+#
+# 关系：papers（元数据）—— library_items（用户收藏）—— documents（可选实体文件）
+# 一个用户对同一篇论文只保留一条 library_item（唯一约束 user_id + paper_id）。
+# ==========================================================================
+class Collection(Base):
+    """文献分类（可两级：parent_id 为空表示顶层）。"""
+
+    __tablename__ = "collections"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    name: Mapped[str] = mapped_column(String(128))
+    parent_id: Mapped[str] = mapped_column(String(64), default="", index=True)
+    sort: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+
+
+class Tag(Base):
+    __tablename__ = "tags"
+    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_tag_user_name"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    name: Mapped[str] = mapped_column(String(64))
+    color: Mapped[str] = mapped_column(String(16), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+
+
+class LibraryItem(Base):
+    """用户文献库条目：外部检索收藏的论文，或上传的 PDF。"""
+
+    __tablename__ = "library_items"
+    __table_args__ = (
+        UniqueConstraint("user_id", "paper_id", name="uq_library_user_paper"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    paper_id: Mapped[str] = mapped_column(
+        String(128), ForeignKey("papers.id", ondelete="CASCADE"), index=True
+    )
+    # 有实体 PDF 并已进入解析管线时才有值
+    document_id: Mapped[str] = mapped_column(String(64), default="", index=True)
+    collection_id: Mapped[str] = mapped_column(String(64), default="", index=True)
+    # unread / reading / read
+    status: Mapped[str] = mapped_column(String(16), default="unread", index=True)
+    # 阅读进度（0-100）
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    note: Mapped[str] = mapped_column(Text, default="")
+    added_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=now_utc, onupdate=now_utc
+    )
+    last_read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class LibraryItemTag(Base):
+    __tablename__ = "library_item_tags"
+
+    library_item_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("library_items.id", ondelete="CASCADE"), primary_key=True
+    )
+    tag_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
+class ReadingNote(Base):
+    """阅读笔记（可带页码，便于回到原文）。"""
+
+    __tablename__ = "reading_notes"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    library_item_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("library_items.id", ondelete="CASCADE"), index=True
+    )
+    page: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    content: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+
+
+# ==========================================================================
+# 论文结构化解析（M3）
+#
+# 解析产物与 documents 分开存：documents 是「文件级」状态，下面这些是
+# 「内容级」结构。删除文档时由服务层显式清理（SQLite 默认不启用外键级联）。
+# ==========================================================================
+class PaperSection(Base):
+    __tablename__ = "paper_sections"
+    __table_args__ = (Index("ix_paper_sections_doc_ordinal", "document_id", "ordinal"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    document_id: Mapped[str] = mapped_column(String(64), index=True)
+    # abstract / introduction / method / ... / references / other
+    section_type: Mapped[str] = mapped_column(String(32), index=True)
+    heading: Mapped[str] = mapped_column(String(255), default="")
+    ordinal: Mapped[int] = mapped_column(Integer, default=0)
+    page_start: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    page_end: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    text: Mapped[str] = mapped_column(Text, default="")
+
+
+class PaperReference(Base):
+    __tablename__ = "paper_references"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    document_id: Mapped[str] = mapped_column(String(64), index=True)
+    ordinal: Mapped[int] = mapped_column(Integer, default=0)
+    raw_text: Mapped[str] = mapped_column(Text, default="")
+    doi: Mapped[str] = mapped_column(String(128), default="")
+    year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    title: Mapped[str] = mapped_column(String(512), default="")
+
+
+class PaperAsset(Base):
+    """表格/图表。table 存结构化行（JSON），figure 目前存图注。"""
+
+    __tablename__ = "paper_assets"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    document_id: Mapped[str] = mapped_column(String(64), index=True)
+    kind: Mapped[str] = mapped_column(String(16), default="table", index=True)
+    page: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    caption: Mapped[str] = mapped_column(Text, default="")
+    content_json: Mapped[str] = mapped_column(Text, default="")
+    storage_path: Mapped[str] = mapped_column(Text, default="")
+
+
+class DocumentQuality(Base):
+    __tablename__ = "document_quality"
+
+    document_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    char_count: Mapped[int] = mapped_column(Integer, default=0)
+    page_count: Mapped[int] = mapped_column(Integer, default=0)
+    section_count: Mapped[int] = mapped_column(Integer, default=0)
+    reference_count: Mapped[int] = mapped_column(Integer, default=0)
+    table_count: Mapped[int] = mapped_column(Integer, default=0)
+    figure_count: Mapped[int] = mapped_column(Integer, default=0)
+    garbage_ratio: Mapped[float] = mapped_column(Float, default=0.0)
+    warnings_json: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+
+
+class DocumentMetadata(Base):
+    """解析出的论文元数据（每篇文档一份）。
+
+    与 papers 表的区别：papers 是「检索到的论文元数据」，本表是「从 PDF 正文
+    抽取出来的元数据」，知识库里的文档也能有，不依赖是否收藏进文献库。
+    """
+
+    __tablename__ = "document_metadata"
+
+    document_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    title: Mapped[str] = mapped_column(String(512), default="")
+    authors_json: Mapped[str] = mapped_column(Text, default="[]")
+    doi: Mapped[str] = mapped_column(String(128), default="")
+    year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    abstract: Mapped[str] = mapped_column(Text, default="")
+    venue: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+
+
+class Analysis(Base):
+    """单篇论文的结构化分析结果（按 kind + model 缓存）。"""
+
+    __tablename__ = "analyses"
+    __table_args__ = (
+        UniqueConstraint("document_id", "kind", "model", name="uq_analysis_doc_kind_model"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    document_id: Mapped[str] = mapped_column(String(64), index=True)
+    # summary / background / question / method / pipeline / innovation /
+    # results / limitations / glossary
+    kind: Mapped[str] = mapped_column(String(32), index=True)
+    model: Mapped[str] = mapped_column(String(128), default="")
+    status: Mapped[str] = mapped_column(String(16), default="ready")
+    content_md: Mapped[str] = mapped_column(Text, default="")
+    citations_json: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=now_utc, onupdate=now_utc
+    )
+
+
 class PaperProfile(Base):
     """一篇论文的「结构化卡片」：多篇对比的原料。
 
@@ -396,6 +636,92 @@ class Comparison(Base):
     verdict: Mapped[str] = mapped_column(Text, default="")
     scenarios_json: Mapped[str] = mapped_column(Text, default="[]")
     report_md: Mapped[str] = mapped_column(Text, default="")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=now_utc, onupdate=now_utc
+    )
+
+class ResearchBrief(Base):
+    """一份「研究辅助报告」：基于若干篇论文，给出方向/问题/思路/路线/计划。
+
+    与 Comparison 的区别：
+      - Comparison 回答「这些论文有什么不同」；
+      - ResearchBrief 回答「我接下来能做什么」，因此它的产物必须区分
+        「已有文献结论」与「AI 提出的假设/建议」，且不能承诺创新性。
+
+    所有分节都以 JSON 存：每个条目自带 ``kind``（evidence / hypothesis / suggestion）
+    与 ``evidence``（documentId + 页码），前端才能如实标注。
+    """
+
+    __tablename__ = "research_briefs"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    team_id: Mapped[str] = mapped_column(String(64), default="", index=True)
+
+    # 用户填的研究目标（可空：空则根据论文自动推断）
+    goal: Mapped[str] = mapped_column(String(512), default="")
+    document_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+
+    # pending / running / ready / failed
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    # cards / directions / questions / roadmap / novelty / related / done
+    stage: Mapped[str] = mapped_column(String(32), default="cards")
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str] = mapped_column(Text, default="")
+
+    directions_json: Mapped[str] = mapped_column(Text, default="[]")
+    questions_json: Mapped[str] = mapped_column(Text, default="[]")
+    approaches_json: Mapped[str] = mapped_column(Text, default="[]")
+    roadmap_json: Mapped[str] = mapped_column(Text, default="[]")
+    novelty_json: Mapped[str] = mapped_column(Text, default="{}")
+    related_work_json: Mapped[str] = mapped_column(Text, default="[]")
+    related_docs_json: Mapped[str] = mapped_column(Text, default="[]")
+    report_md: Mapped[str] = mapped_column(Text, default="")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=now_utc, onupdate=now_utc
+    )
+
+class Report(Base):
+    """一份可导出的学术材料（模块八）。
+
+    kind 取值：
+      - ``reading``   单篇论文阅读报告
+      - ``review``    多篇文献综述初稿
+      - ``status``    研究现状整理（主题 / 方法 / 阶段）
+      - ``comparison``多论文对比报告（内容取自已有 Comparison，不重新生成）
+
+    内容统一存 Markdown（``content_md``），导出 DOCX / HTML / PDF 都由它转换，
+    保证「预览看到的」与「导出的」是同一份内容。
+
+    引用溯源：``sources_json`` 存本报告实际引用到的论文（documentId + 页码），
+    导出时据此生成参考文献表，**不会凭空出现未选中的文献**。
+    """
+
+    __tablename__ = "reports"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    team_id: Mapped[str] = mapped_column(String(64), default="", index=True)
+
+    kind: Mapped[str] = mapped_column(String(32), index=True)
+    title: Mapped[str] = mapped_column(String(512), default="")
+    document_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+    # comparison kind 时记录来源对比 id
+    comparison_id: Mapped[str] = mapped_column(String(64), default="")
+
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    stage: Mapped[str] = mapped_column(String(32), default="cards")
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str] = mapped_column(Text, default="")
+
+    content_md: Mapped[str] = mapped_column(Text, default="")
+    # 引用到的论文与页码，用于生成参考文献与溯源
+    sources_json: Mapped[str] = mapped_column(Text, default="[]")
+    refs_json: Mapped[str] = mapped_column(Text, default="{}")
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(

@@ -348,8 +348,9 @@ async def stream_answer(
             "knowledgeBaseName": chunk.knowledge_base_name,
             "score": chunk.score,
             "page": chunk.page,
-            # 章节标题（如「3 Method」），解析时识别；识别不到为空串
-            "section": chunk.section,
+            # 章节标题（如「3 Method」）：优先用解析出的原文标题，
+            # 旧切片只有类型（method/abstract），再退回类型
+            "section": getattr(chunk, "section_heading", "") or chunk.section,
             "snippet": chunk.snippet(),
         }
         for chunk in context_chunks

@@ -324,8 +324,9 @@ class RetrievedChunk:
         "score",
         "ordinal",
         "lexical",
-        # 章节标题（如「3 Method」）；Markdown/Word 或未识别到标题时为空串
+        # 章节类型（method/abstract…）与原文标题（如「3 Method」）
         "section",
+        "section_heading",
     )
 
     def __init__(
@@ -342,6 +343,7 @@ class RetrievedChunk:
         ordinal: int,
         lexical: int = 0,
         section: str = "",
+        section_heading: str = "",
     ) -> None:
         self.chunk_id = chunk_id
         self.document_id = document_id
@@ -354,8 +356,10 @@ class RetrievedChunk:
         self.ordinal = ordinal
         # 词面命中得分（问题词在片段中出现的加权次数）
         self.lexical = lexical
-        # 章节标题（引用时展示「第 3 章 Method」这类信息）
+        # 章节类型（M3 起写入；旧切片为空串）
         self.section = section
+        # 章节原文标题（如 "2.2.1 BM25"），展示时优先于类型名
+        self.section_heading = section_heading
 
     def snippet(self, limit: int = 160) -> str:
         text = " ".join(self.content.split())
@@ -386,13 +390,14 @@ def add_chunks(
     knowledge_base_name: str,
     document_id: str,
     document_name: str,
-    chunks: list[tuple[int, str, int | None]],
+    chunks: list[tuple],
     team_id: str | None = None,
     embedding_api_key: str = "",
 ) -> int:
-    """写入切片。chunks 为 [(ordinal, content, page_label)]。
+    """写入切片。chunks 为 `(ordinal, content, page_label[, extra_meta])`。
 
     page_label 是人类可读页码（1 基）；Markdown/Word 无分页概念时传 None。
+    extra_meta 可带 `section / section_heading / page_start / page_end`（M3 结构解析）。
 
     owner_id 恒为**操作人（上传者）的用户 id**；团队知识库额外传 team_id。
     这样检索时既能按人过滤（个人库），也能按团队过滤（团队库），
@@ -410,12 +415,15 @@ def add_chunks(
     metadatas: list[dict[str, Any]] = []
 
     for item in chunks:
-        # 兼容两种形状：(ordinal, content, page) 与 (ordinal, content, page, section)
-        if len(item) >= 4:  # type: ignore[arg-type]
-            ordinal, content, page, section = item[0], item[1], item[2], item[3]
+        ordinal, content, page = item[0], item[1], item[2]
+        extra = item[3] if len(item) > 3 else None
+        if isinstance(extra, dict):
+            section_type = str(extra.get("section") or "")
+            section_heading = str(extra.get("section_heading") or "")
         else:
-            ordinal, content, page = item[0], item[1], item[2]  # type: ignore[misc]
-            section = ""
+            # 兼容远端旧形状：(ordinal, content, page, section_heading)
+            section_type = ""
+            section_heading = str(extra or "")
         text = (content or "").strip()
         if not text:
             continue
@@ -423,23 +431,28 @@ def add_chunks(
         chunk_id = f"{document_id}:{ordinal:05d}"
         ids.append(chunk_id)
         documents.append(text)
-        metadatas.append(
-            {
-                "owner_id": owner_id,
-                # 团队知识库需带团队 id，供团队内任意成员检索到；
-                # 个人库用空串占位（Chroma 元数据不接受 None）
-                "team_id": team_id or "",
-                "knowledge_base_id": knowledge_base_id,
-                "knowledge_base_name": knowledge_base_name,
-                "document_id": document_id,
-                "document_name": document_name,
-                "ordinal": ordinal,
-                # Chroma 元数据只接受 str/int/float/bool，None 需转成 -1
-                "page_label": int(page) if page else -1,
-                # 章节标题（引用时展示）；识别不到就是空串
-                "section": str(section or ""),
-            }
-        )
+        metadata = {
+            "owner_id": owner_id,
+            # 团队知识库需带团队 id，供团队内任意成员检索到；
+            # 个人库用空串占位（Chroma 元数据不接受 None）
+            "team_id": team_id or "",
+            "knowledge_base_id": knowledge_base_id,
+            "knowledge_base_name": knowledge_base_name,
+            "document_id": document_id,
+            "document_name": document_name,
+            "ordinal": ordinal,
+            # Chroma 元数据只接受 str/int/float/bool，None 需转成 -1
+            "page_label": int(page) if page else -1,
+            # 章节：类型用于过滤（method/abstract…），标题用于引用展示
+            "section": section_type,
+            "section_heading": section_heading,
+        }
+        if isinstance(extra, dict):
+            for key in ("page_start", "page_end"):
+                value = extra.get(key)
+                if isinstance(value, int):
+                    metadata[key] = value
+        metadatas.append(metadata)
 
     if not ids:
         return 0
@@ -601,6 +614,7 @@ def search(
     hybrid: bool | None = None,
     team_ids: list[str] | None = None,
     embedding_api_key: str = "",
+    sections: list[str] | None = None,
 ) -> list[RetrievedChunk]:
     """检索相关切片。
 
@@ -608,7 +622,8 @@ def search(
       - owner_id / team_ids 在**向量库层面**过滤，确保不会跨用户、跨团队召回
         （安全边界）。团队知识库的切片带 team_id，只要提问者是该团队成员
         就应能召回 —— 这正是「团队知识库」的意义；
-      - knowledge_base_ids 在候选集上二次过滤（Chroma 的 $in 对动态列表较脆弱）；
+      - knowledge_base_ids / sections 在候选集上二次过滤
+        （Chroma 的 $in 对动态列表较脆弱）；
       - **document_ids 命中时按论文配额召回**：每篇论文单独查询并保底配额，
         否则热门论文会吃掉全部 top_k，其余论文一条都进不来，
         「多篇论文问答 / 跨文献关联」就永远只有一篇的内容；
@@ -628,6 +643,7 @@ def search(
         return base
 
     allowed = set(knowledge_base_ids) if knowledge_base_ids else None
+    allowed_sections = set(sections) if sections else None
 
     def collect(
         collection: Any,
@@ -655,6 +671,11 @@ def search(
             doc_id = str(metadata.get("document_id") or "")
             if allowed_docs is not None and doc_id not in allowed_docs:
                 continue
+            if (
+                allowed_sections is not None
+                and str(metadata.get("section") or "") not in allowed_sections
+            ):
+                continue
 
             distance = distances[index] if index < len(distances) else None
             page = metadata.get("page_label")
@@ -671,6 +692,7 @@ def search(
                     ordinal=int(metadata.get("ordinal") or 0),
                     lexical=lexical_score(query_text, content or ""),
                     section=str(metadata.get("section") or ""),
+                    section_heading=str(metadata.get("section_heading") or ""),
                 )
             )
         return items

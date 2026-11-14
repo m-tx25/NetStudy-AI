@@ -518,3 +518,56 @@ class PaperProfileOut(CamelModel):
     citations: dict = {}
     page_count: int = 0
     error: str = ""
+
+class ResearchBriefCreateIn(CamelModel):
+    """创建一份研究辅助报告。"""
+
+    document_ids: list[str]
+    # 研究目标（可空：空则由模型根据论文推断）
+    goal: str = ""
+
+
+class ResearchBriefOut(CamelModel):
+    id: str
+    goal: str = ""
+    status: str = "pending"
+    stage: str = "cards"
+    progress: int = 0
+    error: str = ""
+    document_ids: list[str] = []
+    directions: list[dict] = []
+    questions: list[dict] = []
+    roadmap: dict = {}
+    novelty: dict = {}
+    related_work: dict = {}
+    related_docs: list[dict] = []
+    created_at: str | None = None
+    updated_at: str | None = None
+
+class ReportCreateIn(CamelModel):
+    """创建一份可导出的学术材料。"""
+
+    # reading / review / status / comparison
+    kind: str
+    document_ids: list[str] = []
+    # 报告标题（综述/现状类用作主题）
+    title: str = ""
+    # kind=comparison 时指定来源对比
+    comparison_id: str = ""
+
+
+class ReportOut(CamelModel):
+    id: str
+    kind: str
+    title: str = ""
+    status: str = "pending"
+    stage: str = "cards"
+    progress: int = 0
+    error: str = ""
+    document_ids: list[str] = []
+    comparison_id: str = ""
+    content_md: str = ""
+    sources: list[dict] = []
+    references: dict = {}
+    created_at: str | None = None
+    updated_at: str | None = None

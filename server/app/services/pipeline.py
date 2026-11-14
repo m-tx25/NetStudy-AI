@@ -12,17 +12,177 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import re
 from typing import Any
 
 from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.models import Document, KnowledgeBase, now_utc
-from app.services import chunking, diagnostics, keyring, parser, vectorstore
+from app.models import (
+    Analysis,
+    Document,
+    DocumentMetadata,
+    DocumentQuality,
+    KnowledgeBase,
+    Paper,
+    PaperAsset,
+    PaperReference,
+    PaperSection,
+    now_utc,
+)
+from app.services import (
+    assets as assets_service,
+    chunking,
+    diagnostics,
+    keyring,
+    paper_meta,
+    parser,
+    quality,
+    references as references_service,
+    sectionizer,
+    vectorstore,
+)
+from app.utils.ids import new_id
+
+
+def _page_number(value: Any) -> int | None:
+    """把解析元数据里的页码解析成 1 基整数。
+
+    PyPDFLoader 给的 `page_label` 是**字符串**（"1"），
+    而旧代码只认 int/float，于是所有 PDF 的页码都被丢掉，
+    引用里只剩文档名（实测：2850 条切片全部 page=None）。
+    这里字符串按第一个数字提取，数字保持原样。
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, str):
+        match = re.search(r"\d+", value)
+        if not match:
+            return None
+        value = match.group(0)
+    try:
+        page = int(value)
+    except (TypeError, ValueError):
+        return None
+    return page if page > 0 else None
 
 logger = logging.getLogger(__name__)
+
+
+async def _persist_structure(
+    db,
+    document: Document,
+    sections: list[sectionizer.Section],
+    refs: list[references_service.Reference],
+    asset_items: list[assets_service.Asset],
+    report: quality.QualityReport,
+    meta: paper_meta.PaperMeta,
+) -> None:
+    """把结构解析结果落库（重跑时先清旧数据）。"""
+    for model in (PaperSection, PaperReference, PaperAsset):
+        await db.execute(model.__table__.delete().where(model.document_id == document.id))
+    # 重新解析后旧的分析结果基于旧文本，必须失效，否则用户会看到过期结论
+    await db.execute(
+        Analysis.__table__.delete().where(Analysis.document_id == document.id)
+    )
+    await db.execute(
+        DocumentQuality.__table__.delete().where(DocumentQuality.document_id == document.id)
+    )
+    await db.execute(
+        DocumentMetadata.__table__.delete().where(DocumentMetadata.document_id == document.id)
+    )
+
+    db.add(
+        DocumentMetadata(
+            document_id=document.id,
+            title=(meta.title or "")[:512],
+            authors_json=json.dumps(meta.authors, ensure_ascii=False),
+            doi=meta.doi or "",
+            year=meta.year,
+            abstract=meta.abstract or "",
+            venue=meta.venue or "",
+            created_at=now_utc(),
+        )
+    )
+
+    for section in sections:
+        db.add(
+            PaperSection(
+                id=new_id("sec"),
+                document_id=document.id,
+                section_type=section.section_type,
+                heading=(section.heading or "")[:255],
+                ordinal=section.ordinal,
+                page_start=section.page_start,
+                page_end=section.page_end,
+                text=section.text,
+            )
+        )
+    for index, reference in enumerate(refs):
+        db.add(
+            PaperReference(
+                id=new_id("ref"),
+                document_id=document.id,
+                ordinal=index,
+                raw_text=reference.raw_text,
+                doi=reference.doi,
+                year=reference.year,
+                title=(reference.title or "")[:512],
+            )
+        )
+    for asset in asset_items:
+        db.add(
+            PaperAsset(
+                id=new_id("asset"),
+                document_id=document.id,
+                kind=asset.kind,
+                page=asset.page,
+                caption=(asset.caption or "")[:1000],
+                content_json=asset.content_json,
+                storage_path=asset.storage_path,
+            )
+        )
+    db.add(
+        DocumentQuality(
+            document_id=document.id,
+            char_count=report.char_count,
+            page_count=report.page_count,
+            section_count=report.section_count,
+            reference_count=report.reference_count,
+            table_count=report.table_count,
+            figure_count=report.figure_count,
+            garbage_ratio=report.garbage_ratio,
+            warnings_json=json.dumps(report.warnings, ensure_ascii=False),
+            created_at=now_utc(),
+        )
+    )
+
+    # 上传时文献库条目用的是文件名；解析结果才是权威元数据，直接回填/覆盖。
+    # 覆盖而不是「只在空时填」：修复解析器升级后旧记录仍是坏标题/坏摘要的问题。
+    paper = (
+        await db.execute(
+            select(Paper).where(Paper.source == "upload", Paper.source_id == document.id)
+        )
+    ).scalar_one_or_none()
+    if paper is not None:
+        if meta.title:
+            paper.title = meta.title[:512]
+        if meta.authors:
+            paper.authors_json = json.dumps(
+                [{"name": name, "affiliation": "", "orcid": ""} for name in meta.authors],
+                ensure_ascii=False,
+            )
+        if meta.doi:
+            paper.doi = meta.doi
+        if meta.year:
+            paper.year = meta.year
+        if meta.abstract:
+            paper.abstract = meta.abstract
+
+    await db.commit()
 
 
 async def _process(document_id: str, reindex: bool) -> dict[str, Any]:
@@ -80,16 +240,28 @@ async def _process(document_id: str, reindex: bool) -> dict[str, Any]:
             if not documents:
                 raise parser.ParseError("未能解析出任何文本")
 
-            # 2) 切片，元数据（页码等）自动继承
-            chunks = chunking.split_documents(documents)
+            # 2) 结构解析：章节 / 元数据 / 参考文献 / 表格图表 / 质量校验
+            sections = sectionizer.build_sections(documents)
+            meta = paper_meta.extract(documents, sections)
+            refs = references_service.extract(sections)
+            asset_items = assets_service.extract_tables(
+                document.stored_path
+            ) + assets_service.extract_figure_captions(documents)
+            report = quality.evaluate(documents, sections, refs, asset_items)
+            await _persist_structure(db, document, sections, refs, asset_items, report, meta)
+
+            # 3) 按章节切片（每块带 section/page_start/page_end，供分析与引用定位）
+            chunks = chunking.split_sections(sections)
             if not chunks:
                 raise parser.ParseError("切片结果为空，请检查文档内容")
 
-            # 3) 写入 ChromaDB（embedding 在此步由向量模型完成）
-            payload: list[tuple[int, str, int | None, str]] = []
+            # 4) 写入 ChromaDB（embedding 在此步由向量模型完成）
+            payload: list[tuple] = []
             for ordinal, chunk in enumerate(chunks):
                 metadata = chunk.metadata or {}
-                page = metadata.get("page_label") or metadata.get("page")
+                page = metadata.get("page_label")
+                if page is None:
+                    page = metadata.get("page")
                 # 章节标题由 parser 识别并放进元数据（PDF 的「3 Method」这类标题），
                 # 引用时展示「第 N 章」，比只有页码更好定位。
                 section = str(metadata.get("section") or "")
@@ -97,8 +269,15 @@ async def _process(document_id: str, reindex: bool) -> dict[str, Any]:
                     (
                         ordinal,
                         chunk.page_content or "",
-                        int(page) if isinstance(page, (int, float)) and page else None,
-                        section,
+                        # 用 _page_number 解析：page_label 是字符串（"3"），
+                        # 旧代码只认 int，导致 PDF 切片全部丢页码
+                        _page_number(page),
+                        {
+                            "section": metadata.get("section", "other"),
+                            "section_heading": metadata.get("section_heading", ""),
+                            "page_start": int(metadata.get("page_start") or 0),
+                            "page_end": int(metadata.get("page_end") or 0),
+                        },
                     )
                 )
 
@@ -117,7 +296,7 @@ async def _process(document_id: str, reindex: bool) -> dict[str, Any]:
                 embedding_api_key=embedding_key,
             )
 
-            # 4) 回填统计
+            # 5) 回填统计
             document.chunks = stored
             document.status = "ready"
             document.error = ""
@@ -126,15 +305,21 @@ async def _process(document_id: str, reindex: bool) -> dict[str, Any]:
             await db.commit()
 
             logger.info(
-                "文档处理完成 id=%s 切片=%s 向量模式=%s",
+                "文档处理完成 id=%s 切片=%s 章节=%s 引用=%s 表格=%s 图注=%s 向量模式=%s",
                 document.id,
                 stored,
+                report.section_count,
+                report.reference_count,
+                report.table_count,
+                report.figure_count,
                 vectorstore.embeddings.current_mode(),
             )
             return {
                 "ok": True,
                 "documentId": document.id,
                 "chunks": stored,
+                "sections": report.section_count,
+                "references": report.reference_count,
                 "embeddingMode": vectorstore.embeddings.current_mode(),
                 "reindex": reindex,
             }

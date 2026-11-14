@@ -80,6 +80,21 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE_MB: int = 50
     UPLOAD_DIR: str = "./data/uploads"
 
+    # ---------------- 学术文献检索（外部数据源） ----------------
+    # OpenAlex / Crossref 的 polite pool 需要 mailto：填了会显著降低被限流概率。
+    LITERATURE_MAILTO: str = ""
+    OPENALEX_API_KEY: str = ""
+    SEMANTIC_SCHOLAR_API_KEY: str = ""
+    # 单个 HTTP 请求超时（秒）
+    LITERATURE_TIMEOUT: float = 12.0
+    # 单个数据源整体超时：超时即降级为「该源无结果」，不拖垮整次检索
+    LITERATURE_PER_SOURCE_TIMEOUT: float = 5.0
+    # 检索结果缓存时间（秒）
+    LITERATURE_CACHE_TTL: int = 600
+    # 访问外部学术 API 的代理（例如 http://127.0.0.1:7890）。
+    # 留空则直连；部分网络下 Crossref / arXiv 需要代理才能访问。
+    LITERATURE_PROXY: str = ""
+
     # ---------------- 向量化：智谱 embedding-3 ----------------
     # 与协作者 rag/ 模块同一方案。申请：https://open.bigmodel.cn/
     # 注意变量名是 ZHIPUAI_API_KEY（LangChain 的 ZhipuAIEmbeddings 读这个）。
