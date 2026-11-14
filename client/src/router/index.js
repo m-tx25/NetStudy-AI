@@ -52,6 +52,12 @@ const routes = [
         meta: { title: '文献检索' },
       },
       {
+        path: 'library',
+        name: 'library',
+        component: () => import('@/views/LibraryView.vue'),
+        meta: { title: '我的文献库' },
+      },
+      {
         path: 'knowledge',
         name: 'knowledge',
         component: () => import('@/views/KnowledgeView.vue'),

@@ -6,7 +6,7 @@ const props = defineProps({
   paper: { type: Object, required: true },
 })
 
-const emit = defineEmits(['open'])
+const emit = defineEmits(['open', 'collect'])
 
 const authorsText = computed(() => {
   const list = props.paper.authors || []
@@ -80,6 +80,9 @@ const sourceLabel = computed(() => {
           <button class="font-medium text-brand transition hover:opacity-80" @click="emit('open', paper)">
             <el-icon class="mr-1 align-[-2px]"><Reading /></el-icon>
             查看详情
+          </button>
+          <button class="font-medium app-muted transition hover:text-brand" @click="emit('collect', paper)">
+            + 收藏到文献库
           </button>
           <a
             v-if="doiUrl"

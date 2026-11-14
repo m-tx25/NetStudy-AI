@@ -12,6 +12,7 @@ import {
 } from '@element-plus/icons-vue'
 
 import { fetchRelated, fetchSources, searchLiterature } from '@/api/literature'
+import { addLibraryItem } from '@/api/library'
 import PaperCard from '@/components/search/PaperCard.vue'
 
 const form = reactive({
@@ -139,6 +140,15 @@ async function openPaper(paper) {
 
 const sourceName = (name) =>
   ({ openalex: 'OpenAlex', crossref: 'Crossref', arxiv: 'arXiv', semantic_scholar: 'Semantic Scholar' })[name] || name
+
+async function collect(paper) {
+  try {
+    const item = await addLibraryItem(paper)
+    ElMessage.success(item.duplicated ? '这篇论文已在文献库中' : '已加入文献库')
+  } catch (err) {
+    ElMessage.error(err?.message || '收藏失败')
+  }
+}
 </script>
 
 <template>
@@ -259,7 +269,7 @@ const sourceName = (name) =>
       </div>
 
       <div v-else class="space-y-3">
-        <PaperCard v-for="paper in items" :key="paper.id" :paper="paper" @open="openPaper" />
+        <PaperCard v-for="paper in items" :key="paper.id" :paper="paper" @open="openPaper" @collect="collect" />
       </div>
     </section>
 
@@ -305,6 +315,9 @@ const sourceName = (name) =>
           </p>
 
           <div class="mt-4 flex flex-wrap gap-2">
+            <el-button type="primary" plain size="small" @click="collect(drawer.paper)">
+              收藏到文献库
+            </el-button>
             <el-button
               v-if="drawer.paper.openAccess?.pdfUrl"
               type="primary"

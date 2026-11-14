@@ -368,3 +368,86 @@ class SearchLog(Base):
     result_count: Mapped[int] = mapped_column(Integer, default=0)
     latency_ms: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
+
+
+# ==========================================================================
+# 个人文献库
+#
+# 关系：papers（元数据）—— library_items（用户收藏）—— documents（可选实体文件）
+# 一个用户对同一篇论文只保留一条 library_item（唯一约束 user_id + paper_id）。
+# ==========================================================================
+class Collection(Base):
+    """文献分类（可两级：parent_id 为空表示顶层）。"""
+
+    __tablename__ = "collections"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    name: Mapped[str] = mapped_column(String(128))
+    parent_id: Mapped[str] = mapped_column(String(64), default="", index=True)
+    sort: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+
+
+class Tag(Base):
+    __tablename__ = "tags"
+    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_tag_user_name"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    name: Mapped[str] = mapped_column(String(64))
+    color: Mapped[str] = mapped_column(String(16), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+
+
+class LibraryItem(Base):
+    """用户文献库条目：外部检索收藏的论文，或上传的 PDF。"""
+
+    __tablename__ = "library_items"
+    __table_args__ = (
+        UniqueConstraint("user_id", "paper_id", name="uq_library_user_paper"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    paper_id: Mapped[str] = mapped_column(
+        String(128), ForeignKey("papers.id", ondelete="CASCADE"), index=True
+    )
+    # 有实体 PDF 并已进入解析管线时才有值
+    document_id: Mapped[str] = mapped_column(String(64), default="", index=True)
+    collection_id: Mapped[str] = mapped_column(String(64), default="", index=True)
+    # unread / reading / read
+    status: Mapped[str] = mapped_column(String(16), default="unread", index=True)
+    # 阅读进度（0-100）
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    note: Mapped[str] = mapped_column(Text, default="")
+    added_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=now_utc, onupdate=now_utc
+    )
+    last_read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class LibraryItemTag(Base):
+    __tablename__ = "library_item_tags"
+
+    library_item_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("library_items.id", ondelete="CASCADE"), primary_key=True
+    )
+    tag_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
+class ReadingNote(Base):
+    """阅读笔记（可带页码，便于回到原文）。"""
+
+    __tablename__ = "reading_notes"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    library_item_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("library_items.id", ondelete="CASCADE"), index=True
+    )
+    page: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    content: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)

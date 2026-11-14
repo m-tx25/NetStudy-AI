@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
 from pathlib import Path
 
@@ -17,7 +16,6 @@ from sqlalchemy import select
 from app.api.deps import CurrentUser, DbSession
 from app.api.knowledge_bases import refresh_counts
 from app.api.serializers import document_out
-from app.core.config import settings
 from app.models import Document, KnowledgeBase, now_utc
 from app.schemas import (
     BatchDeleteIn,
@@ -27,31 +25,12 @@ from app.schemas import (
     OkOut,
 )
 from app.services import access, chunking, diagnostics, keyring, parser, vectorstore
+from app.services import uploads as upload_service
 from app.tasks import dispatch_process_document
-from app.utils.ids import new_id
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/documents", tags=["documents"])
-
-# 白名单与 services/parser.py 的 _BUILTIN 分发键保持严格一致，
-# 否则会出现「上传成功、解析阶段才报不支持」的错位体验。
-# 另：.doc 虽在分发表里，但解析器会明确提示「请另存为 .docx」，
-# 这里仍放行以便给出那条更具体的提示。
-ALLOWED_EXTENSIONS = {
-    ".pdf", ".docx", ".doc", ".md", ".markdown", ".txt",
-    ".csv", ".json", ".html", ".htm", ".pptx", ".xlsx", ".xls",
-}
-
-CHUNK_SIZE = 1024 * 1024  # 1MB
-
-
-def _uploads_dir() -> Path:
-    directory = Path(settings.UPLOAD_DIR)
-    if not directory.is_absolute():
-        directory = Path.cwd() / directory
-    directory.mkdir(parents=True, exist_ok=True)
-    return directory
 
 
 async def _get_owned_document(db: DbSession, document_id: str, user_id: str) -> Document:
@@ -166,124 +145,16 @@ async def upload_document(
     file: UploadFile = File(...),
     knowledge_base_id: str = Form(..., alias="knowledgeBaseId"),
 ) -> DocumentOut:
-    filename = (file.filename or "").strip()
-    if not filename:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="未获取到文件名")
-
-    # 扩展名白名单：只接受解析器真正支持的格式。
-    # 不加白名单的话，任意文件（如 .exe）都会被落盘再在解析阶段失败，
-    # 既浪费磁盘又给出难以理解的报错。
-    suffix = Path(filename).suffix.lower()
-    if suffix not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                f"不支持的文件类型「{suffix or '无扩展名'}」。"
-                f"支持：{', '.join(sorted(ALLOWED_EXTENSIONS))}"
-            ),
-        )
-
     # 上传目标知识库：个人库需本人拥有，团队库需本人是团队成员
     # （团队知识库对成员开放上传，这是团队协作的核心诉求）
     base = await access.get_accessible(db, knowledge_base_id, user.id)
     if base is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="知识库不存在")
 
-    document_id = new_id("doc")
-    target = _uploads_dir() / f"{document_id}{suffix}"
-
-    written = 0
-    limit = settings.max_upload_bytes
-    # 边写边算 SHA-256：用于「同一知识库内按内容去重」。
-    # 不额外读一遍文件，避免大文件二次 IO。
-    hasher = hashlib.sha256()
-    try:
-        with target.open("wb") as sink:
-            while True:
-                chunk = await file.read(CHUNK_SIZE)
-                if not chunk:
-                    break
-                written += len(chunk)
-                if written > limit:
-                    sink.close()
-                    target.unlink(missing_ok=True)
-                    raise HTTPException(
-                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                        detail=f"文件过大，已超出服务端限制（{settings.MAX_UPLOAD_SIZE_MB}MB）",
-                    )
-                hasher.update(chunk)
-                sink.write(chunk)
-    except HTTPException:
-        raise
-    except OSError as exc:
-        target.unlink(missing_ok=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"保存文件失败：{exc}"
-        ) from exc
-    finally:
-        await file.close()
-
-    if written == 0:
-        target.unlink(missing_ok=True)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传的文件为空")
-
-    content_hash = hasher.hexdigest()
-
-    # ---- 内容去重：同一知识库里已有同样内容的文件就不再入库 ----
-    # 只按「同一知识库 + 内容哈希」判定：不同知识库各自保留一份是合理的
-    # （归属、密钥、检索范围都不同）。
-    # 已失败的记录不算命中 —— 用户重传往往就是为了重试失败的那份。
-    existing = (
-        await db.execute(
-            select(Document)
-            .where(Document.knowledge_base_id == base.id)
-            .where(Document.content_hash == content_hash)
-            .where(Document.status != "failed")
-            .order_by(Document.uploaded_at.desc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-    if existing is not None:
-        target.unlink(missing_ok=True)
-        logger.info(
-            "上传去重命中：kb=%s hash=%s 复用文档 %s（新上传的文件已丢弃）",
-            base.id, content_hash[:12], existing.id,
-        )
-        return DocumentOut(**document_out(existing, duplicated=True))
-
-    document = Document(
-        id=document_id,
-        knowledge_base_id=base.id,
-        name=filename[:512],
-        uploaded_by=user.id,
-        stored_path=str(target),
-        content_hash=content_hash,
-        size=written,
-        chunks=0,
-        status="processing",
-        enabled=True,
-        uploaded_at=now_utc(),
+    document, duplicated = await upload_service.store_upload(
+        db, user_id=user.id, base=base, file=file
     )
-    db.add(document)
-    await db.flush()
-    await refresh_counts(db, base.id)
-    # 先提交，确保 worker 一定能查到这条记录
-    await db.commit()
-
-    result = dispatch_process_document(document.id)
-    if result.get("mode") == "eager":
-        # 同步执行完毕，重新读取最终状态与切片数
-        await db.refresh(document)
-    elif not result.get("queued"):
-        # 队列不可用：明确告知原因，而不是让文档永远停在 processing
-        document.status = "failed"
-        document.error = (
-            "任务队列不可用，文档未开始解析："
-            f"{result.get('error', '未知原因')}。请启动 Redis 或设置 CELERY_TASK_ALWAYS_EAGER=true"
-        )
-        await db.commit()
-
-    return DocumentOut(**document_out(document))
+    return DocumentOut(**document_out(document, duplicated=duplicated))
 
 
 @router.patch("/{document_id}", response_model=DocumentOut)
