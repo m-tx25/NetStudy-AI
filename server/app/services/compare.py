@@ -328,7 +328,7 @@ async def extract_card(
     try:
         sampled = await asyncio.to_thread(sample_paper, path)
         if not sampled.text.strip():
-            raise ValueError("未能从 PDF 中解析出可用文本（可能是扫描件）")
+            raise ValueError("未能从文档中解析出可用文本（可能是扫描版，或该格式没有页码）")
 
         answer = await llm.complete(
             [
@@ -793,7 +793,18 @@ async def run_comparison(comparison_id: str) -> None:
 
             usable = [p for p in profiles if p.status == "ready"]
             if len(usable) < 2:
-                raise ValueError("可用论文不足两篇：卡片抽取全部失败，请检查 PDF 是否为扫描件")
+                # 失败原因必须带出来：旧提示把「1 篇失败」也说成「全部失败、
+                # 可能是扫描件」，把排查方向直接带偏（markdown 文档根本没有页）。
+                failed = [p for p in profiles if p.status != "ready"]
+                reasons = "；".join(
+                    f"{document_names.get(p.document_id, p.document_id)}："
+                    f"{(p.error or '未知原因')[:200]}"
+                    for p in failed
+                )
+                raise ValueError(
+                    f"可用论文不足两篇（{len(usable)}/{len(profiles)} 篇抽取成功）。"
+                    + (f"失败原因：{reasons}" if reasons else "")
+                )
 
             cards = "\n\n".join(
                 card_brief(p, document_names.get(p.document_id, "")) for p in usable

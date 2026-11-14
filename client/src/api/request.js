@@ -159,7 +159,15 @@ request.interceptors.response.use(
     } else if (status === 403) {
       message = '没有权限执行该操作'
     } else if (status === 404) {
-      message = `接口不存在：${config.url || ''}`
+      // 404 有两种：路由确实不存在（FastAPI 默认返回 "Not Found"），
+      // 以及业务层的「记录/卡片不存在」。后者必须保留后端原话，
+      // 否则「该论文尚未抽取过结构化卡片」会被显示成「接口不存在」，
+      // 把人带去排查部署问题。见论文对比页的卡片查询。
+      const detail = error.response?.data?.message || error.response?.data?.detail
+      message =
+        detail && detail !== 'Not Found'
+          ? detail
+          : `接口不存在：${config.url || ''}`
     } else if (status === 413) {
       message = '文件过大，已超出服务端限制'
     } else if (status >= 500) {
