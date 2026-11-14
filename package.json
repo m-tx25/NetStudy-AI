@@ -1,8 +1,8 @@
 {
-  "name": "chuangzhibei",
+  "name": "matrix-scholar",
   "private": true,
   "version": "0.1.0",
-  "description": "传智杯 Web 方向参赛项目：Vue 3 + Vite 前端 / Python + FastAPI 后端（RAG 知识问答系统）",
+  "description": "传智杯 Web 方向参赛项目：苍穹矩阵（Matrix-Scholar RAG Engine）—— Vue 3 + Vite 前端 / Python + FastAPI 后端",
   "type": "module",
   "scripts": {
     "install:all": "npm --prefix client install && npm --prefix server install",

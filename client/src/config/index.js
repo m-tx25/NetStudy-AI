@@ -15,10 +15,10 @@ export const API_BASE_URL = raw.VITE_API_BASE_URL || '/api'
 /** 是否启用内置 Mock：无后端也能完整体验整个前端流程 */
 export const isMockMode = toBool(raw.VITE_USE_MOCK, false)
 
-export const APP_TITLE = raw.VITE_APP_TITLE || 'RAG 知识问答系统'
+export const APP_TITLE = raw.VITE_APP_TITLE || '苍穹矩阵'
 
 /** 页脚展示用的主体信息（上线前按实际主体替换） */
-export const COMPANY_NAME = raw.VITE_COMPANY_NAME || 'RAG 知识问答系统项目组'
+export const COMPANY_NAME = raw.VITE_COMPANY_NAME || '苍穹矩阵（Matrix-Scholar）项目组'
 export const ICP_LICENSE = raw.VITE_ICP_LICENSE || ''
 export const SUPPORT_EMAIL = raw.VITE_SUPPORT_EMAIL || 'support@example.com'
 

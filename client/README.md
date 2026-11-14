@@ -1,4 +1,4 @@
-# RAG 知识问答系统 · 前端
+# 苍穹矩阵 · 前端
 
 基于 **Vue 3 + Vite + TailwindCSS + Element Plus** 的单页应用（SPA），
 负责登录注册、智能问答对话、知识库与文档管理，通过 Axios 与后端异步通信，
@@ -181,7 +181,7 @@ client/
 | --- | --- | --- | --- |
 | `VITE_API_BASE_URL` | `/api` | `/api` | 接口前缀，开发期由 Vite 代理到 `http://localhost:3000` |
 | `VITE_USE_MOCK` | `true` | `false` | 是否启用内置 Mock 数据 |
-| `VITE_APP_TITLE` | `RAG 知识问答系统` | 同左 | 显示在登录页与侧边栏 |
+| `VITE_APP_TITLE` | `苍穹矩阵` | 同左 | 显示在登录页与侧边栏 |
 
 > 想交付一个「纯前端、点开就能演示」的构建包，把 `client/.env.production` 里的
 > `VITE_USE_MOCK` 改成 `true` 再 `npm run build` 即可。

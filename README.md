@@ -1,8 +1,12 @@
-# RAG 知识问答系统（NetStudy-AI）
+# 苍穹矩阵（Matrix-Scholar RAG Engine）
 
 [![CI](https://github.com/m-tx25/NetStudy-AI/actions/workflows/ci.yml/badge.svg)](https://github.com/m-tx25/NetStudy-AI/actions/workflows/ci.yml)
 
-> 传智杯 Web 方向参赛项目 · 一个支持**多团队协作**的 RAG 知识问答平台
+> **苍穹矩阵（Matrix-Scholar RAG Engine）** —— 一个面向学术文献的 RAG 平台：多团队协作、论文对比、研究辅助、成果导出。
+>
+> 名字取自《黑客帝国》：矩阵代表对底层代码的掌控；学术文献如同苍穹，系统穿透海量论文的表象，直击知识底层的答案。
+>
+> 传智杯 Web 方向参赛项目
 ### 团队成员：
 
 胡瑞祺：负责网关与网络层、基础设施与部署层。
