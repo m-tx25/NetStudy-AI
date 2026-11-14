@@ -183,3 +183,36 @@ def run_comparison_task(self, comparison_id: str) -> dict[str, Any]:
     from app.services.compare import run_comparison
 
     return run_async(run_comparison(comparison_id))
+
+def dispatch_research(brief_id: str) -> dict[str, Any]:
+    """把「研究辅助」投递到后台（与文档解析同一套语义）。"""
+    if settings.CELERY_TASK_ALWAYS_EAGER:
+        if settings.CELERY_EAGER_ASYNC:
+            from app.services.research import run_brief
+
+            task = asyncio.create_task(run_brief(brief_id))
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
+            return {"queued": True, "mode": "eager-async"}
+        run_async(_run_research_sync(brief_id))
+        return {"queued": False, "mode": "eager"}
+
+    try:
+        run_research_task.delay(brief_id)
+        return {"queued": True, "mode": "celery"}
+    except Exception as exc:
+        logger.warning("研究辅助任务投递失败：%s", exc)
+        return {"queued": False, "mode": "failed", "error": str(exc)}
+
+
+async def _run_research_sync(brief_id: str) -> None:
+    from app.services.research import run_brief
+
+    await run_brief(brief_id)
+
+
+@celery_app.task(name="app.tasks.run_research", bind=True, max_retries=1)
+def run_research_task(self, brief_id: str) -> dict[str, Any]:
+    from app.services.research import run_brief
+
+    return run_async(run_brief(brief_id))

@@ -283,6 +283,15 @@ async function handleCommand(command) {
 
       <button
         class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm app-text transition app-hover"
+        :class="{ 'app-active': route.path.startsWith('/app/research') }"
+        @click="go('/app/research')"
+      >
+        <el-icon class="text-base"><DataAnalysis /></el-icon>
+        <span class="flex-1 text-left">研究助手</span>
+      </button>
+
+      <button
+        class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm app-text transition app-hover"
         :class="{ 'app-active': route.path.startsWith('/app/teams') }"
         @click="go('/app/teams')"
       >

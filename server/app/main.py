@@ -28,6 +28,7 @@ from app.api import (
     health,
     keys,
     knowledge_bases,
+    research,
     teams,
 )
 from app.core.config import settings
@@ -195,6 +196,8 @@ for router in (
     # 多篇论文智能对比（模块五）
     comparisons.router,
     comparisons.paper_router,
+    # 学术研究辅助（模块七）
+    research.router,
 ):
     app.include_router(router, prefix=settings.API_PREFIX)
 

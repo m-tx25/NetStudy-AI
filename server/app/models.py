@@ -401,3 +401,46 @@ class Comparison(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=now_utc, onupdate=now_utc
     )
+
+class ResearchBrief(Base):
+    """一份「研究辅助报告」：基于若干篇论文，给出方向/问题/思路/路线/计划。
+
+    与 Comparison 的区别：
+      - Comparison 回答「这些论文有什么不同」；
+      - ResearchBrief 回答「我接下来能做什么」，因此它的产物必须区分
+        「已有文献结论」与「AI 提出的假设/建议」，且不能承诺创新性。
+
+    所有分节都以 JSON 存：每个条目自带 ``kind``（evidence / hypothesis / suggestion）
+    与 ``evidence``（documentId + 页码），前端才能如实标注。
+    """
+
+    __tablename__ = "research_briefs"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    team_id: Mapped[str] = mapped_column(String(64), default="", index=True)
+
+    # 用户填的研究目标（可空：空则根据论文自动推断）
+    goal: Mapped[str] = mapped_column(String(512), default="")
+    document_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+
+    # pending / running / ready / failed
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    # cards / directions / questions / roadmap / novelty / related / done
+    stage: Mapped[str] = mapped_column(String(32), default="cards")
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str] = mapped_column(Text, default="")
+
+    directions_json: Mapped[str] = mapped_column(Text, default="[]")
+    questions_json: Mapped[str] = mapped_column(Text, default="[]")
+    approaches_json: Mapped[str] = mapped_column(Text, default="[]")
+    roadmap_json: Mapped[str] = mapped_column(Text, default="[]")
+    novelty_json: Mapped[str] = mapped_column(Text, default="{}")
+    related_work_json: Mapped[str] = mapped_column(Text, default="[]")
+    related_docs_json: Mapped[str] = mapped_column(Text, default="[]")
+    report_md: Mapped[str] = mapped_column(Text, default="")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=now_utc, onupdate=now_utc
+    )
