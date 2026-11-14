@@ -71,6 +71,47 @@ def split_documents(
     return [chunk for chunk in chunks if (chunk.page_content or "").strip()]
 
 
+def split_sections(
+    sections,
+    *,
+    chunk_size: int | None = None,
+    chunk_overlap: int | None = None,
+) -> list[Document]:
+    """按章节切片（M3）。
+
+    与 `split_documents` 的区别：每个切片额外带
+    `section / section_heading / page_start / page_end` 元数据，
+    这样检索命中后能说清「来自 Method 第 4 页」，也支持按章节过滤。
+
+    `sections` 是 `sectionizer.Section` 列表；这里用鸭子类型避免循环导入。
+    """
+    size = chunk_size or settings.CHUNK_SIZE
+    overlap = chunk_overlap if chunk_overlap is not None else settings.CHUNK_OVERLAP
+    if overlap >= size:
+        overlap = max(0, size // 8)
+
+    splitter = _get_splitter(size, overlap)
+    chunks: list[Document] = []
+
+    for section in sections:
+        text = (getattr(section, "text", "") or "").strip()
+        if not text:
+            continue
+        metadata = {
+            "section": getattr(section, "section_type", "other"),
+            "section_heading": (getattr(section, "heading", "") or "")[:120],
+            "page_start": getattr(section, "page_start", None) or 0,
+            "page_end": getattr(section, "page_end", None) or 0,
+            "page_label": getattr(section, "page_start", None) or 0,
+        }
+        if splitter is None:
+            chunks.append(Document(page_content=text, metadata=metadata))
+            continue
+        chunks.extend(splitter.create_documents([text], metadatas=[metadata]))
+
+    return [chunk for chunk in chunks if (chunk.page_content or "").strip()]
+
+
 def describe() -> dict:
     return {
         "chunkSize": settings.CHUNK_SIZE,

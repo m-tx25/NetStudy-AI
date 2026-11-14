@@ -46,6 +46,24 @@ const routes = [
         meta: { title: '智能问答' },
       },
       {
+        path: 'search',
+        name: 'search',
+        component: () => import('@/views/SearchView.vue'),
+        meta: { title: '文献检索' },
+      },
+      {
+        path: 'library',
+        name: 'library',
+        component: () => import('@/views/LibraryView.vue'),
+        meta: { title: '我的文献库' },
+      },
+      {
+        path: 'papers/:id',
+        name: 'paper',
+        component: () => import('@/views/PaperView.vue'),
+        meta: { title: '论文解析' },
+      },
+      {
         path: 'knowledge',
         name: 'knowledge',
         component: () => import('@/views/KnowledgeView.vue'),

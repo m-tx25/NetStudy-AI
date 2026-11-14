@@ -9,6 +9,7 @@ import {
   Delete,
   DocumentCopy,
   Edit,
+  Files,
   Loading,
   Moon,
   More,
@@ -263,6 +264,24 @@ async function handleCommand(command) {
 
     <!-- 底部功能区 -->
     <div class="border-t app-border px-2 py-2">
+      <button
+        class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm app-text transition app-hover"
+        :class="{ 'app-active': route.path.startsWith('/app/search') }"
+        @click="go('/app/search')"
+      >
+        <el-icon class="text-base"><Search /></el-icon>
+        <span class="flex-1 text-left">文献检索</span>
+      </button>
+
+      <button
+        class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm app-text transition app-hover"
+        :class="{ 'app-active': route.path.startsWith('/app/library') }"
+        @click="go('/app/library')"
+      >
+        <el-icon class="text-base"><Files /></el-icon>
+        <span class="flex-1 text-left">我的文献库</span>
+      </button>
+
       <button
         class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm app-text transition app-hover"
         :class="{ 'app-active': route.path.startsWith('/app/knowledge') }"

@@ -28,6 +28,9 @@ from app.api import (
     health,
     keys,
     knowledge_bases,
+    library,
+    literature,
+    papers,
     reports,
     research,
     teams,
@@ -192,6 +195,12 @@ for router in (
     chat.router,
     teams.router,
     keys.router,
+    # 学术检索（外部数据源）
+    literature.router,
+    # 个人文献库
+    library.router,
+    # 论文结构解析结果（M3）
+    papers.router,
     # 团队密钥挂在 /api/teams/{team_id}/keys 下
     keys.team_router,
     # 多篇论文智能对比（模块五）
