@@ -99,3 +99,37 @@ cd server
 | `server/reindex_all.py` | 全量重建索引 |
 | `server/prune_orphan_vectors.py` | 清理「库已删但向量还在」的残留 |
 | `docs/compare.md` | 论文对比（不依赖向量库，索引坏了也能用） |
+
+---
+
+## 六、最终结论：这个 Chroma 版本不会持久化 HNSW 索引
+
+> 这一节是实测结论，推翻了本文前半部分「干净退出就能落盘」的假设。
+
+### 验证过程
+
+| 关闭方式 | 结果 |
+| --- | --- |
+| `taskkill /F`（强杀） | `*.bin` 未落盘 |
+| `taskkill`（不带 /F） | 对控制台程序无效，提示只能强制结束 |
+| **Ctrl+Break**（`CREATE_NEW_PROCESS_GROUP` + `signal.CTRL_BREAK_EVENT`） | 进程以 `0xC000013A` 退出，`*.bin` **仍未落盘** |
+
+也就是说：**无论怎么关，Chroma 1.4.4/1.5.9 都不会把 HNSW 索引写到磁盘**，
+只把向量留在 `chroma.sqlite3` 里。而删除 `index_metadata.pickle` 让 Chroma
+从 sqlite 重建索引的做法**不稳定** —— 有时能查到（count/按 id 读都正常），
+但向量检索持续报 `Error finding id`，等多久都不会恢复。
+
+### 因此的实际规则
+
+1. **一次机器会话只重建一次**：`dev.cmd --rebuild --reindex`，然后**不要停 Chroma**；
+2. 重启电脑 / 重启 Chroma → 索引必然失效 → 再跑一次 `--rebuild --reindex`（约 2 分钟）；
+3. `--snapshot` 只能备份 sqlite 数据，**恢复后仍需要重建索引**，
+   所以 `--reindex` 成功后**不再自动打快照**（打快照要停 Chroma，正好把索引杀掉）；
+4. 判断是否要重建，先跑 `dev.cmd --check`：
+   `Error finding id` / `Error loading hnsw index` 都是「要重建」的信号。
+
+### 彻底解决的方向
+
+把 `chromadb` 与它的 rust runtime 版本对齐（当前 python 包 1.5.9、CLI 1.4.4），
+或改用 Docker 里的官方镜像（`docker-compose.yml` 已含 chroma 服务，
+带 `stop_grace_period`）。这两条都需要联网重装依赖，尚未执行。

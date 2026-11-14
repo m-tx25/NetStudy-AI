@@ -408,7 +408,15 @@ def _enrich_sections(documents: list[Document]) -> list[Document]:
             if detected:
                 current = detected
         if current:
-            document.metadata = {**(document.metadata or {}), "section": current}
+            # 两个键都写：
+            #   section         —— 章节标题原文（引用展示用）
+            #   section_heading —— 结构化解析（M3）约定的字段名
+            # 只写一个会导致引用里显示 "other"/"front" 这种分类而没有标题。
+            document.metadata = {
+                **(document.metadata or {}),
+                "section": current,
+                "section_heading": current,
+            }
     return documents
 
 

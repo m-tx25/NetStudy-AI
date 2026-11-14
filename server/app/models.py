@@ -26,6 +26,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.mysql import LONGTEXT
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -329,13 +330,18 @@ class Paper(Base):
     __tablename__ = "papers"
     __table_args__ = (
         UniqueConstraint("source", "source_id", name="uq_paper_source"),
-        Index("ix_papers_title", "title"),
+        # title 是 String(512)，utf8mb4 下整列索引要 2048 字节，
+        # 超过 MySQL 5.7 的 1000 字节上限（ERROR 1071），必须用前缀索引。
+        Index("ix_papers_title", "title", mysql_length=191),
     )
 
     # 统一 id：`<source>:<source_id>`
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
     source: Mapped[str] = mapped_column(String(32), index=True)
-    source_id: Mapped[str] = mapped_column(String(255), index=True)
+    # 191 是 MySQL 5.7 的安全上限：utf8mb4 下 191×4=764 字节，
+    # 加上联合唯一索引里的 source(32×4=128) 仍 < 1000。
+    # 用 255 会直接报 ERROR 1071（Specified key was too long）。
+    source_id: Mapped[str] = mapped_column(String(191), index=True)
     doi: Mapped[str] = mapped_column(String(128), default="", index=True)
     title: Mapped[str] = mapped_column(String(512), default="")
     abstract: Mapped[str] = mapped_column(Text, default="")
@@ -471,7 +477,9 @@ class PaperSection(Base):
     ordinal: Mapped[int] = mapped_column(Integer, default=0)
     page_start: Mapped[int | None] = mapped_column(Integer, nullable=True)
     page_end: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    text: Mapped[str] = mapped_column(Text, default="")
+    # 一节正文可能上万字：MySQL 的 TEXT 上限 64KB，实测综述类论文会撞
+    # ERROR 1406（Data too long for column 'text'），故用 LONGTEXT。
+    text: Mapped[str] = mapped_column(Text().with_variant(LONGTEXT(), "mysql"), default="")
 
 
 class PaperReference(Base):
