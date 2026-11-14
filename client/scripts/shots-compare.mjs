@@ -55,6 +55,29 @@ try {
   const text = await cdp.evaluate(`document.body.innerText.replace(/\\n{2,}/g,'\\n').slice(0, 1200)`)
   console.log('--- 页面文本 ---')
   console.log(text)
+
+  // 滚动检测：外层 AppLayout 是 h-screen overflow-hidden，
+  // 页面必须自带滚动容器，否则内容被裁掉且滚不动（这问题真踩过）。
+  const scrollCheck = await cdp.evaluate(`(() => {
+    const el = document.querySelector('.overflow-y-auto');
+    if (!el) return { ok: false, reason: '找不到滚动容器' };
+    const before = el.scrollTop;
+    el.scrollTop = el.scrollHeight;
+    const after = el.scrollTop;
+    const info = {
+      ok: after > before,
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+      scrollTopAfter: after,
+    };
+    el.scrollTop = before;
+    return info;
+  })()`)
+  console.log('滚动检测:', JSON.stringify(scrollCheck))
+  if (!scrollCheck.ok) {
+    console.error('❌ 页面无法滚动：内容会被裁掉')
+    process.exitCode = 1
+  }
 } finally {
   close()
 }

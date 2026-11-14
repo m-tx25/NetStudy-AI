@@ -195,7 +195,12 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="mx-auto w-full max-w-7xl px-4 py-6 md:px-6">
+  <!--
+    外层 AppLayout 是 `h-screen overflow-hidden`，页面自身必须提供滚动容器，
+    否则内容会被裁掉、整个页面滚不动（对比结果很长，必须能滚）。
+  -->
+  <div class="h-full overflow-y-auto scrollbar-thin">
+    <div class="mx-auto w-full max-w-7xl px-4 py-6 md:px-6">
     <header class="mb-5 flex flex-wrap items-center gap-3">
       <div class="min-w-0 flex-1">
         <h1 class="text-xl font-semibold app-text">论文对比</h1>
@@ -363,11 +368,15 @@ onUnmounted(() => {
               每一行把全部论文放在一起比较；<span class="app-accent">(p.N)</span> 是原文页码，
               「推断」表示由原文推断、「未提及」表示该论文没涉及。
             </p>
-            <div class="mt-3 overflow-x-auto">
+            <div class="mt-3 overflow-x-auto scrollbar-thin">
               <table class="w-full text-left text-xs">
                 <thead>
                   <tr class="app-muted">
-                    <th class="w-24 pb-2 pr-3 font-medium">维度</th>
+                    <th
+                      class="sticky left-0 z-10 w-24 bg-[var(--app-panel)] pb-2 pr-3 font-medium"
+                    >
+                      维度
+                    </th>
                     <th
                       v-for="paper in papers"
                       :key="paper"
@@ -384,7 +393,11 @@ onUnmounted(() => {
                     :key="row.dimension"
                     class="border-t app-border align-top"
                   >
-                    <td class="py-2 pr-3 font-medium app-text">{{ row.dimension }}</td>
+                    <td
+                      class="sticky left-0 z-10 bg-[var(--app-panel)] py-2 pr-3 font-medium app-text"
+                    >
+                      {{ row.dimension }}
+                    </td>
                     <td
                       v-for="paper in papers"
                       :key="paper"
@@ -481,6 +494,7 @@ onUnmounted(() => {
           </p>
         </section>
       </main>
+      </div>
     </div>
   </div>
 </template>
