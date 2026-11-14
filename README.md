@@ -32,6 +32,7 @@
 | 上传去重 | 同一知识库内按文件内容 SHA-256 去重：重复上传同一份文件会提示「已存在（跳过）」，不再产生第二份切片与重复引用 |
 | 批量删除 | 文档列表支持多选批量删除；逐条判定权限，返回「已删除 / 无权限 / 不存在」三类结果，部分失败不会让整批失败 |
 | **多篇论文对比** | 选 2~6 篇论文，自动归纳对比维度并逐维度横向比较：结论、矩阵（带页码）、演进时间轴、研究空白、场景胜负，可导出 Markdown 报告。详见 [docs/compare.md](docs/compare.md) |
+| **学术智能问答** | 按论文（单篇/多篇）限定检索范围，按篇配额召回保证每篇都有发言权；引用带论文名 + 章节 + 页码 + 片段；所选论文中没找到依据的会明确列出。详见 [docs/qa.md](docs/qa.md) |
 | 团队协作 | 团队 CRUD、邀请码与搜索加入、QQ 群式入队审核、角色（负责人/管理员/成员）、负责人转让、管理员直接拉人 |
 | API 密钥 | **团队级 + 个人级**双作用域（智谱 / DeepSeek / OpenAI / 自定义），加密存储、只显示掩码，按知识库归属自动选用 |
 | 模型选择 | 可在多个生成模型间切换（服务端配置 + 自备密钥），生成模型与向量化模型解耦 |
@@ -65,6 +66,7 @@
 
 - [开发报告](docs/development-report.md) — 已完成工作、技术选型、验证记录、已知问题与下一步计划
 - [多篇论文对比](docs/compare.md) — 两阶段设计、取样策略、防幻觉手段、接口与实测数据
+- [学术智能问答](docs/qa.md) — 论文级检索范围、按篇配额、证据覆盖清单、章节引用
 - [团队与密钥](docs/teams.md) — 权限矩阵、入队与审核流程、团队知识库、密钥作用域与生效规则
 - [前端接口与 SSE 协议约定](docs/frontend-api.md) — REST 接口、`text/event-stream` 事件格式、数据模型
 - [前端说明](client/README.md) — 目录结构、功能清单、自检脚本
@@ -545,7 +547,7 @@ $env:API_BASE='http://你的域名/api'
 | `server/` | `.\.venv\Scripts\python.exe tests\verify_byok_deploy.py` | **上线验收**：用户自备 Key 是否真生效（18 项，不消耗额度） |
 | `server/` | `.\.venv\Scripts\python.exe tests\verify_upload_dedup.py` | 上传去重 + 批量删除验收（21 项） |
 | `server/` | `.\.venv\Scripts\python.exe tests\verify_compare.py` | **多篇论文对比验收**（28 项，需三篇论文 PDF） |
-| `server/` | `.\.venv\Scripts\python.exe -m pytest tests\test_units.py -q` | 纯单元测试（24 项，不连数据库，CI 同款） |
+| `server/` | `.\.venv\Scripts\python.exe -m pytest tests\test_units.py -q` | 纯单元测试（29 项，不连数据库，CI 同款） |
 | `server/` | `.\.venv\Scripts\python.exe cleanup_test_data.py` | 清理自动化测试留下的账号/团队（默认 dry-run，`--yes` 才执行） |
 | `server/` | `.\.venv\Scripts\python.exe prune_orphan_vectors.py` | 清理数据库已删但 Chroma 仍残留的切片（默认 dry-run） |
 | `server/` | `.\.venv\Scripts\python -m celery -A app.tasks.celery_app worker -l info` | 启动异步 worker（需 Redis） |
@@ -859,7 +861,7 @@ git push origin feat/你的功能
 
 | 范围 | 命令 | 期望 |
 | --- | --- | --- |
-| 后端单测 | `cd server && .\.venv\Scripts\python.exe -m pytest tests\test_units.py -q` | 24 passed |
+| 后端单测 | `cd server && .\.venv\Scripts\python.exe -m pytest tests\test_units.py -q` | 29 passed |
 | 后端编译 | `cd server && .\.venv\Scripts\python.exe -m compileall -q app tests` | 退出码 0 |
 | 前端构建 | `cd client && npm run build` | 构建成功，无报错 |
 | 前端自检 | `cd client && npm run check:build` | Tailwind 与主题覆盖正常 |

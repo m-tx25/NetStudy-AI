@@ -204,6 +204,9 @@ class StreamChatIn(CamelModel):
     conversation_id: str | None = None
     content: str
     knowledge_base_ids: list[str] = Field(default_factory=list)
+    # 论文级范围：非空时只在这些文档里检索（模块六「单篇/多篇论文问答」）。
+    # 与 knowledge_base_ids 可同时存在，document_ids 优先。
+    document_ids: list[str] = Field(default_factory=list)
     top_k: int | None = None
     score_threshold: float | None = None
     # 生成模型 id（见 GET /api/chat/models）；留空则用服务端默认模型。

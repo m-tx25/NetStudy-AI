@@ -238,3 +238,109 @@ def test_warmup_uses_real_search_path() -> None:
 
     source = inspect.getsource(app_main._warmup_connections)
     assert 'vectorstore.search' in source
+
+# ---------------------------------------------------------------------------
+# 模块六：学术智能问答（章节识别 / 多篇论文作答 / 按篇配额）
+# ---------------------------------------------------------------------------
+def test_section_detection_patterns() -> None:
+    """章节标题识别要覆盖论文常见写法，且不把正文句子当标题。"""
+    from app.services.parser import _detect_section
+
+    cases = {
+        '3 Method\nbody...': '3 Method',
+        '4.2 Experimental Setup\nbody': '4.2 Experimental Setup',
+        'II. RELATED WORK\nbody': 'II. RELATED WORK',
+        'A. Retrieval Source\nbody': 'A. Retrieval Source',
+        '第 3 章 方法\n正文': '第 3 章 方法',
+        '三、实验结果\n正文': '三、实验结果',
+        'References': 'References',
+    }
+    for text, expected in cases.items():
+        assert _detect_section(text) == expected, text
+
+    # 正文里提到节号不应被当成标题
+    body = 'As described in section 3, the model works well and we report results here.\n' * 2
+    assert _detect_section(body) == ''
+
+
+def test_section_is_enriched_for_plain_text() -> None:
+    """parse_document 要给每个块补 section，且状态跨页延续。"""
+    from app.services.parser import _enrich_sections
+    from langchain_core.documents import Document
+
+    docs = _enrich_sections(
+        [
+            Document(page_content='1 Introduction\nintro text', metadata={'page': 1}),
+            Document(page_content='no heading here', metadata={'page': 2}),
+            Document(page_content='2 Methods\nmethod text', metadata={'page': 3}),
+        ]
+    )
+    assert docs[0].metadata['section'] == '1 Introduction'
+    # 第二页没标题 → 沿用上一页章节
+    assert docs[1].metadata['section'] == '1 Introduction'
+    assert docs[2].metadata['section'] == '2 Methods'
+
+
+def _make_chunk(document_id: str, score: float, section: str = '') -> object:
+    from app.services.vectorstore import RetrievedChunk
+
+    return RetrievedChunk(
+        chunk_id=f'{document_id}-{score}',
+        document_id=document_id,
+        document_name=f'{document_id}.pdf',
+        knowledge_base_id='kb',
+        knowledge_base_name='kb',
+        content='sample content',
+        page=3,
+        score=score,
+        ordinal=0,
+        lexical=0,
+        section=section,
+    )
+
+
+def test_document_quota_prevents_single_paper_domination() -> None:
+    """多篇论文问答：最相关那篇不能吃掉全部名额。
+
+    这是「跨文献关联」能否成立的前提 —— 否则模型只看到一篇的内容。
+    """
+    from app.services.vectorstore import _apply_document_quota
+
+    candidates = [
+        _make_chunk('A', 0.90),
+        _make_chunk('A', 0.88),
+        _make_chunk('A', 0.86),
+        _make_chunk('A', 0.84),
+        _make_chunk('A', 0.82),
+        _make_chunk('B', 0.40),
+        _make_chunk('B', 0.35),
+        _make_chunk('C', 0.30),
+    ]
+    kept = _apply_document_quota(candidates, ['A', 'B', 'C'], 5)
+    docs = {item.document_id for item in kept}
+    assert docs == {'A', 'B', 'C'}, docs
+    assert len(kept) <= 5
+
+
+def test_multi_paper_prompt_requires_per_paper_statement() -> None:
+    """≥2 篇论文时，提示词必须要求逐篇说明 + 明确「未提及」。"""
+    from app.rag.prompts import build_user_prompt
+
+    chunks = [_make_chunk('d1', 0.8), _make_chunk('d2', 0.7)]
+    prompt = build_user_prompt('两篇有什么区别？', chunks, ['论文一.pdf', '论文二.pdf'])
+    assert '2 篇论文' in prompt
+    assert '未提及' in prompt
+    assert '论文一.pdf' in prompt and '论文二.pdf' in prompt
+
+    # 单篇时不应出现多篇场景的额外要求
+    single = build_user_prompt('这篇讲了什么？', chunks[:1], ['论文一.pdf'])
+    assert '作答要求（多篇论文场景）' not in single
+
+
+def test_context_includes_section_when_available() -> None:
+    """引用块要带章节信息（「第 3 页 · 2.1 Models」），否则只能靠页码定位。"""
+    from app.rag.prompts import build_context
+
+    text = build_context([_make_chunk('d1', 0.8, section='2.1 Models')])
+    assert '第 3 页' in text
+    assert '2.1 Models' in text

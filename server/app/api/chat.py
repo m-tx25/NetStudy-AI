@@ -45,6 +45,7 @@ async def chat_stream(
                 conversation_id=payload.conversation_id,
                 question=payload.content,
                 knowledge_base_ids=payload.knowledge_base_ids,
+                document_ids=payload.document_ids,
                 top_k=payload.top_k,
                 score_threshold=payload.score_threshold,
                 model_id=payload.model_id,
