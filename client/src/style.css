@@ -887,7 +887,8 @@ html.dark .auth-shell {
   display: flex;
   align-items: center;
   gap: 18px;
-  font-size: 13px;
+  /* 13px 在 1x 截图上会和降采样网格打架，看起来像有删除线；14px 更清晰 */
+  font-size: 14px;
 }
 
 .auth-tab {
