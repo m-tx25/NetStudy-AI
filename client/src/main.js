@@ -15,6 +15,7 @@ import App from './App.vue'
 import router from './router'
 import { applyStoredTheme } from '@/composables/useTheme'
 import { isMockMode } from '@/config'
+import { registerServiceWorker } from '@/utils/pwa'
 
 applyStoredTheme()
 
@@ -36,5 +37,7 @@ if (isMockMode) {
     'color:#10a37f;font-weight:600',
   )
 }
+
+registerServiceWorker()
 
 app.mount('#app')

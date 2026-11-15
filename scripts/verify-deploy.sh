@@ -51,9 +51,10 @@ try:
 except Exception:
     print("  [FAIL] /api/health 不是合法 JSON"); raise SystemExit
 vs = d.get("vectorStore", {}) or {}
-print(f"  [INFO] 数据库：{'可用' if d.get('database', {}).get('available') else '不可用'}")
+db = d.get("database", {}) or {}
+print(f"  [INFO] 数据库：{db.get('kind') or '-'} {db.get('user')}@{db.get('host')}:{db.get('port')}/{db.get('database')}")
 print(f"  [INFO] 向量库：available={vs.get('available')} chunks={vs.get('totalChunks')}")
-print(f"  [INFO] LLM：{'已配置' if d.get('llmConfigured') else '未配置'}")
+print(f"  [INFO] LLM：{'已配置' if d.get('llmConfigured') else '未配置'} {d.get('llmModel') or ''}")
 PY
 
 # 向量库有数据才算真的可用（available 可能是缓存的旧状态）
@@ -80,16 +81,26 @@ fi
 echo
 echo "--- 4. 存储与配额 ---"
 if [ -n "$TOKEN" ]; then
-  STORAGE=$(curl -s --max-time 20 -H "Authorization: Bearer $TOKEN" "$API/storage/status")
-  echo "$STORAGE" | python3 -c '
-import json, sys
-d = json.load(sys.stdin)
-disk = d["disk"]; q = d["quota"]; lim = d["limits"]
-print(f"  [INFO] 磁盘：总 {disk[\"totalGb\"]}GB / 剩 {disk[\"freeGb\"]}GB")
-print(f"  [INFO] 配额：总 {q[\"totalQuotaGb\"]}GB / 已用 {q[\"usedGb\"]}GB / 单用户 {q[\"userQuotaGb\"]}GB")
-print(f"  [INFO] 单文件上限：{lim[\"maxUploadMb\"]}MB / 分块 {lim[\"chunkSizeKb\"]}KB / 解析并发 {lim[\"maxConcurrentParseTasks\"]}")
-' 2>/dev/null || bad "storage/status 解析失败"
-  ok "存储接口可访问"
+  curl -s --max-time 20 -H "Authorization: Bearer $TOKEN" \
+    "$API/storage/status" > /tmp/dsh-storage.json
+  # 用 heredoc 读临时文件解析：内联 python -c 里的引号在 bash 单引号里会被当成字面反斜杠
+  if python3 - <<'PY'
+import json
+try:
+    d = json.load(open('/tmp/dsh-storage.json', encoding='utf-8'))
+except Exception as exc:
+    print(f"  [FAIL] storage/status 不是合法 JSON：{exc}")
+    raise SystemExit(1)
+disk, q, lim = d["disk"], d["quota"], d["limits"]
+print(f"  [INFO] 磁盘：总 {disk['totalGb']}GB / 剩 {disk['freeGb']}GB")
+print(f"  [INFO] 配额：总 {q['totalQuotaGb']}GB / 已用 {q['usedGb']}GB / 单用户 {q['userQuotaGb']}GB")
+print(f"  [INFO] 单文件上限：{lim['maxUploadMb']}MB / 分块 {lim['chunkSizeKb']}KB / 解析并发 {lim['maxConcurrentParseTasks']}")
+PY
+  then
+    ok "存储接口可访问"
+  else
+    bad "storage/status 解析失败"
+  fi
 fi
 
 # ---------------------------------------------------------------- 5. 上传拦截

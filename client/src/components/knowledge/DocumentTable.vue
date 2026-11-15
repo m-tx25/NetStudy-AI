@@ -2,12 +2,16 @@
 import { computed, ref } from 'vue'
 import { Refresh, Delete, Document } from '@element-plus/icons-vue'
 
+import { useIsMobile } from '@/composables/useMedia'
 import { formatBytes, formatDateTime } from '@/utils/format'
 
 const props = defineProps({
   documents: { type: Array, default: () => [] },
   loading: { type: Boolean, default: false },
 })
+
+// 手机上列太多会横向溢出：下面用 v-if 直接去掉次要列（不是 CSS 隐藏，否则列宽仍占位）
+const { isMobile } = useIsMobile()
 
 const emit = defineEmits(['remove', 'reindex', 'toggle', 'batch-remove'])
 
@@ -77,8 +81,8 @@ function typeColor(name = '') {
     :header-cell-style="{ fontWeight: '600' }"
     @selection-change="onSelectionChange"
   >
-    <el-table-column type="selection" width="42" reserve-selection />
-    <el-table-column label="文档" min-width="260">
+    <el-table-column v-if="!isMobile" type="selection" width="42" reserve-selection />
+    <el-table-column label="文档" :min-width="isMobile ? 140 : 260">
       <template #default="{ row }">
         <div class="flex items-center gap-2.5 py-1">
           <span
@@ -98,7 +102,7 @@ function typeColor(name = '') {
       </template>
     </el-table-column>
 
-    <el-table-column label="解析状态" width="150">
+    <el-table-column label="解析状态" :width="isMobile ? 92 : 150">
       <template #default="{ row }">
         <!-- 失败时把后端给出的原因显示出来：鼠标悬停看详情，点「查看原因」看完整说明 -->
         <el-popover
@@ -131,7 +135,7 @@ function typeColor(name = '') {
       </template>
     </el-table-column>
 
-    <el-table-column label="向量片段" width="100" align="right">
+    <el-table-column v-if="!isMobile" label="向量片段" width="100" align="right">
       <template #default="{ row }">
         <span class="text-sm app-text-secondary">
           {{ row.chunks ?? '-' }}
@@ -139,7 +143,7 @@ function typeColor(name = '') {
       </template>
     </el-table-column>
 
-    <el-table-column label="参与检索" width="100" align="center">
+    <el-table-column v-if="!isMobile" label="参与检索" width="100" align="center">
       <template #default="{ row }">
         <el-switch
           :model-value="row.enabled !== false"
@@ -149,13 +153,13 @@ function typeColor(name = '') {
       </template>
     </el-table-column>
 
-    <el-table-column label="上传时间" width="170">
+    <el-table-column v-if="!isMobile" label="上传时间" width="170">
       <template #default="{ row }">
         <span class="text-xs app-muted">{{ formatDateTime(row.uploadedAt || row.createdAt) }}</span>
       </template>
     </el-table-column>
 
-    <el-table-column label="操作" width="130" align="right">
+    <el-table-column label="操作" :width="isMobile ? 88 : 130" align="right">
       <template #default="{ row }">
         <el-tooltip content="重新解析并向量化" placement="top" :show-after="300">
           <el-button
