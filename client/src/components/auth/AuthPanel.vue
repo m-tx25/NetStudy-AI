@@ -2,27 +2,27 @@
 import AuthIllustration from '@/components/auth/AuthIllustration.vue'
 import { isMockMode } from '@/config'
 
-/** 四项能力（文案沿用改造前左栏的能力卡片，只换成参考图的排版） */
+/** 四项能力：与首页「产品能力」保持一致，突出学术文献场景 */
 const capabilities = [
   {
-    title: '全格式文档接入',
-    desc: 'PDF / Word / Markdown / Excel 一键解析、自动分块与向量化',
+    title: '多源文献检索',
+    desc: '按主题、作者或 DOI 检索，命中论文直接收进文献库',
   },
   {
-    title: '答案引用可溯源',
-    desc: '每条结论都附带原文出处、页码与相关度，可点开逐条核对',
+    title: '多篇论文对比',
+    desc: '2~6 篇自动归纳对比维度，结论带原文页码',
   },
   {
-    title: '数据不出内网',
-    desc: '支持私有化部署，文档与向量库均落在你指定的环境中',
+    title: '研究助手',
+    desc: '基于所选论文给出研究方向与技术路线，标注文献依据与 AI 假设',
   },
   {
-    title: '面向团队的协作',
-    desc: '知识库分级管理、会话留痕、检索范围与召回参数随问随调',
+    title: '成果一键导出',
+    desc: '阅读报告与综述初稿导出 Word / PDF，参考文献按 GB/T 7714',
   },
 ]
 
-const trustItems = ['传输加密', '权限分级', '操作审计', '私有化部署']
+const trustItems = ['权限分级', '团队隔离', '操作审计', '私有化部署']
 </script>
 
 <template>
@@ -47,15 +47,15 @@ const trustItems = ['传输加密', '权限分级', '操作审计', '私有化�
             class="inline-block h-1.5 w-1.5 rounded-full"
             :style="{ backgroundColor: 'var(--auth-blue)' }"
           />
-          检索增强生成 · RAG 架构
+          学术文献 · RAG 研究平台
         </span>
-        <span class="auth-badge auth-badge--strong">企业版</span>
+        <span class="auth-badge auth-badge--strong">学术版</span>
       </div>
 
       <!-- 主标题 -->
       <h2 class="auth-promo-title">
-        让每一个答案，<br />
-        都能追溯到<span class="auth-promo-mark">原文出处</span>
+        把海量论文，<br />
+        读成一页<span class="auth-promo-mark">可核对的结论</span>
       </h2>
 
       <!-- 副标题（参考图里的强调行，数值用品牌深色） -->
@@ -82,8 +82,8 @@ const trustItems = ['传输加密', '权限分级', '操作审计', '私有化�
 
       <!-- 说明 + 信任条 -->
       <p class="auth-promo-note">
-        把团队的文档交给大模型之前，先用向量检索锁定最相关的片段。回答有据可依，结论可核可查——这是企业场景使用
-        AI 的底线。
+        把文献交给大模型之前，先用检索锁定最相关的章节。答案有据可依、结论可核可查——这是把
+        AI 用于科研的底线。
       </p>
 
       <div class="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5">

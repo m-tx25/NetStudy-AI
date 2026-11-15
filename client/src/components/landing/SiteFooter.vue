@@ -26,12 +26,12 @@ const productLinks = [
             <span
               class="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-brand-light to-brand text-sm font-bold text-white shadow-lg shadow-brand/25"
             >
-              R
+              M
             </span>
             <span class="text-[15px] font-semibold app-text">{{ APP_TITLE }}</span>
           </div>
           <p class="mt-4 max-w-xs text-[13px] leading-6 app-muted">
-            面向企业知识场景的检索增强问答系统：先把文档变成可检索的知识，再让大模型给出有出处的回答。
+            面向学术文献的 RAG 研究平台：检索、解析、对比与成稿，每条结论都能回到论文的章节与页码。
           </p>
           <p v-if="isMockMode" class="mt-4 inline-flex items-center gap-2 text-[11px] app-muted">
             <span class="h-1.5 w-1.5 rounded-full bg-amber-400" />

@@ -13,7 +13,7 @@
     fill="none"
     xmlns="http://www.w3.org/2000/svg"
     role="img"
-    aria-label="智能问答与引用溯源示意图"
+    aria-label="文献问答与引用溯源示意图"
   >
     <defs>
       <linearGradient id="authIllHead" x1="0" y1="0" x2="1" y2="1">
@@ -44,7 +44,7 @@
       d="M40 184a16 16 0 0 1 16-16h350a16 16 0 0 1 16 16v26H40z"
       fill="url(#authIllHead)"
     />
-    <text x="66" y="203" fill="#ffffff" font-size="12" font-weight="600">智能问答</text>
+    <text x="66" y="203" fill="#ffffff" font-size="12" font-weight="600">文献问答</text>
     <circle cx="368" cy="194" r="3.4" fill="#ffffff" opacity="0.75" />
     <circle cx="382" cy="194" r="3.4" fill="#ffffff" opacity="0.6" />
     <circle cx="396" cy="194" r="3.4" fill="#ffffff" opacity="0.45" />

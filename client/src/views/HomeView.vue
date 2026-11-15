@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
+import { ElMessageBox } from 'element-plus'
 import {
   ArrowRight,
   ChatDotRound,
@@ -71,6 +72,33 @@ function goWorkspace() {
   router.push(workspaceTarget.value)
 }
 
+/**
+ * 能力卡点击：未登录先提示登录（带 redirect 回到对应功能），已登录直接进入该功能页。
+ * 首页是公开页，卡片不能是「只展示不响应」的摆设，否则用户点半天不知道要登录。
+ */
+async function goFeature(item) {
+  if (!item?.to) return
+  if (userStore.isAuthenticated) {
+    router.push(item.to)
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `登录后即可使用「${item.title}」，未登录只能浏览产品介绍。`,
+      '需要登录',
+      {
+        confirmButtonText: '去登录',
+        cancelButtonText: '再看看',
+        type: 'info',
+        customClass: 'home-login-prompt',
+      },
+    )
+    router.push({ name: 'login', query: { redirect: item.to } })
+  } catch {
+    // 用户选择「再看看」：什么都不做
+  }
+}
+
 /* ------------------------------------------------------------------ *
  * 首屏关键数字
  * ------------------------------------------------------------------ */
@@ -90,36 +118,42 @@ const features = [
     title: '多源文献检索',
     desc: '按主题、作者或 DOI 在学术源中检索，命中的论文直接收进文献库，省去手工建库。',
     tag: '检索入库',
+    to: '/app/search',
   },
   {
     icon: Files,
     title: '文献库与标签',
     desc: '论文、阅读笔记与标签统一管理，按课题分组；个人库与团队库分开存放。',
     tag: '统一管理',
+    to: '/app/library',
   },
   {
     icon: DocumentChecked,
     title: '论文结构化解析',
     desc: '按章节切分并保留页码，图表、指标与结论都能定位回原文位置。',
     tag: '页码对齐',
+    to: '/app/library',
   },
   {
     icon: DataAnalysis,
     title: '多篇论文对比',
     desc: '选 2~6 篇自动归纳对比维度，输出带页码的矩阵、演进时间轴与研究空白。',
     tag: '2~6 篇',
+    to: '/app/compare',
   },
   {
     icon: TrendCharts,
     title: '研究助手',
     desc: '基于所选论文给出研究方向、可研究问题与技术路线，逐条标注「文献依据 / AI 假设」。',
     tag: '选题辅助',
+    to: '/app/research',
   },
   {
     icon: Document,
     title: '成果导出',
     desc: '阅读报告、综述初稿、对比报告一键导出 Word / PDF，参考文献按 GB/T 7714 生成。',
     tag: '不编 DOI',
+    to: '/app/reports',
   },
 ]
 
@@ -471,7 +505,7 @@ const faqs = [
                     class="max-w-[85%] rounded-2xl rounded-br-md px-4 py-2.5 text-[13px] leading-6 text-white"
                     style="background-image: linear-gradient(135deg, #25c39c, #0f9b7a)"
                   >
-                    这两篇 RAG 综述的划分方式有什么不同？
+                    这两篇综述分别在讲什么？
                   </p>
                 </div>
 
@@ -485,8 +519,8 @@ const faqs = [
                   <div class="min-w-0 flex-1">
                     <div class="rounded-2xl rounded-tl-md border app-border app-panel px-4 py-3">
                       <p class="text-[13px] leading-6 app-text-secondary">
-                        两篇综述对 RAG 的组织方式不同：Gao 等按「检索—生成—增强」三段式展开，
-                        Gupta 等则按时间线梳理从朴素 RAG 到模块化 RAG 的演进。<span
+                        Gupta 等按时间线梳理 RAG 从朴素到模块化的演进，并归纳评测与挑战；
+                        Corso 等从消息传递机制出发，讨论 GNN 的表达能力与过平滑问题。<span
                           class="ml-0.5 inline-block h-3.5 w-[7px] translate-y-0.5 animate-pulse rounded-sm bg-brand-light align-middle"
                         />
                       </p>
@@ -498,7 +532,7 @@ const faqs = [
                           <span class="accent-bar h-6 w-[3px] shrink-0 rounded-full bg-brand-light" />
                           <el-icon class="shrink-0 text-[13px] app-accent"><Document /></el-icon>
                           <span class="min-w-0 flex-1 truncate font-mono text-[11px] app-muted">
-                            2312.10997v5.pdf · 第 3 页
+                            A Comprehensive Survey of RAG · 第 3 页
                           </span>
                           <span class="shrink-0 font-mono text-[10px] app-accent">0.91</span>
                         </div>
@@ -508,7 +542,7 @@ const faqs = [
                           <span class="h-6 w-[3px] shrink-0 rounded-full" style="background: #38bdf8" />
                           <el-icon class="shrink-0 text-[13px]" style="color: #38bdf8"><Document /></el-icon>
                           <span class="min-w-0 flex-1 truncate font-mono text-[11px] app-muted">
-                            2410.12837v1(1).pdf · 第 2 页
+                            Graph neural networks · 第 1 页
                           </span>
                           <span class="shrink-0 font-mono text-[10px] app-accent">0.86</span>
                         </div>
@@ -533,7 +567,7 @@ const faqs = [
                 >
                   <el-icon class="text-sm app-faint"><Search /></el-icon>
                   <span class="flex-1 truncate text-[12px] app-faint">
-                    继续追问，例如「第二篇用了哪些评测指标？」
+                    继续追问，例如「第二篇怎么处理过平滑？」
                   </span>
                   <span
                     class="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-brand-light to-brand text-white"
@@ -571,8 +605,13 @@ const faqs = [
             <article
               v-for="(item, index) in features"
               :key="item.title"
-              class="reveal tech-lift group rounded-2xl tech-glass p-6"
+              class="reveal tech-lift group cursor-pointer rounded-2xl tech-glass p-6"
               :style="`transition-delay: ${(index % 3) * 90}ms`"
+              role="button"
+              tabindex="0"
+              @click="goFeature(item)"
+              @keydown.enter.prevent="goFeature(item)"
+              @keydown.space.prevent="goFeature(item)"
             >
               <div class="flex items-start justify-between">
                 <span
@@ -835,10 +874,10 @@ const faqs = [
 
             <div class="relative">
               <h2 class="mx-auto max-w-2xl text-balance text-[26px] font-semibold tracking-tight app-text sm:text-[32px]">
-                现在就把团队的文档，变成能答问题的知识库
+                现在就把读过的论文，变成能追问的文献库
               </h2>
               <p class="mx-auto mt-4 max-w-xl text-[14px] leading-7 app-muted">
-                登录后即可上传文档、发起提问，并逐条核对回答的引用出处。
+                登录后即可检索并入库文献、做论文对比，每条结论都能核对到原文页码。
               </p>
               <div class="mt-8 flex flex-wrap items-center justify-center gap-3">
                 <RouterLink
