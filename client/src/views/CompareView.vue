@@ -323,7 +323,11 @@ onUnmounted(() => {
         <section v-else-if="current?.status === 'failed'" class="rounded-xl border app-border app-panel p-6">
           <p class="text-sm font-medium text-red-500">对比失败</p>
           <p class="mt-2 whitespace-pre-wrap text-xs app-muted">{{ current.error || '未知原因' }}</p>
-          <el-button class="mt-4" type="primary" :icon="Refresh" @click="rerun">重试</el-button>
+          <div class="mt-4 flex items-center gap-2">
+            <el-button type="primary" :icon="Refresh" @click="rerun">重试</el-button>
+            <!-- 失败记录同样要能清理：原来只有「重试」，失败的对比只能一直堆在历史里 -->
+            <el-button :icon="Delete" @click="removeCurrent">删除</el-button>
+          </div>
         </section>
 
         <!-- 结果 -->
