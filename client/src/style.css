@@ -630,6 +630,36 @@
   padding: 0;
 }
 
+/* ---------------------------------------------------------------------------
+   手机端弹层兜底
+   各业务弹层写死了 440~640px 宽度（文献库详情 600px、检索详情 560px、
+   上传 560px、密钥管理 540px…），在 390px 屏幕上会超出屏幕、左右内容被裁。
+   这里统一压到 92%，就不用逐个组件改；侧边栏抽屉（280px）保持原样。
+   --------------------------------------------------------------------------- */
+@media (max-width: 767px) {
+  .el-dialog {
+    width: 92% !important;
+    max-width: 92vw;
+    margin-top: 6vh !important;
+  }
+
+  .el-drawer:not(.rag-sidebar-drawer) {
+    width: 92% !important;
+    max-width: 100vw;
+  }
+
+  .el-message-box {
+    width: 88% !important;
+    max-width: 88vw;
+  }
+
+  /* popover（模型/知识库选择器）别超出屏幕 */
+  .el-popover.rag-model-popover,
+  .el-popover.rag-kb-popover {
+    max-width: 92vw !important;
+  }
+}
+
 .el-table {
   --el-table-border-color: var(--app-border);
   --el-table-header-bg-color: rgba(127, 127, 127, 0.06);
