@@ -82,6 +82,9 @@
 - [学术研究辅助](docs/research.md) — 文献依据与 AI 假设如何分离、研究方向/问题/路线/计划的生成方式
 - [成果生成与导出](docs/export.md) — 四类材料、三种导出格式、不伪造文献的具体措施
 
+- [**部署到服务器**](docs/deploy.md) — 2C4G/50GB 的 Docker 与裸机两条路线、上线自检、备份与故障对照
+- [评审演示模式](docs/demo.md) — 预置论文与缓存解析结果，现场不用等解析
+- [PDF 上传与存储](docs/storage.md) — 100MB 上限、配额、流式上传、孤儿清理
 - [向量库修复手册](docs/vectorstore.md) — 为什么坏、怎么体检、快照与一键恢复
 - [团队与密钥](docs/teams.md) — 权限矩阵、入队与审核流程、团队知识库、密钥作用域与生效规则
 - [前端接口与 SSE 协议约定](docs/frontend-api.md) — REST 接口、`text/event-stream` 事件格式、数据模型
