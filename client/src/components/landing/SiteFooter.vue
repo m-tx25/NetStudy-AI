@@ -3,6 +3,7 @@ import { RouterLink } from 'vue-router'
 
 import { usePolicyDialog } from '@/composables/usePolicyDialog'
 import { APP_TITLE, COMPANY_NAME, ICP_LICENSE, SUPPORT_EMAIL, isMockMode } from '@/config'
+import BrandMark from '@/components/brand/BrandMark.vue'
 
 const { openPolicy } = usePolicyDialog()
 
@@ -23,11 +24,7 @@ const productLinks = [
         <!-- 品牌 -->
         <div>
           <div class="flex items-center gap-2.5">
-            <span
-              class="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-brand-light to-brand text-sm font-bold text-white shadow-lg shadow-brand/25"
-            >
-              M
-            </span>
+            <BrandMark :size="36" :radius="8" />
             <span class="text-[15px] font-semibold app-text">{{ APP_TITLE }}</span>
           </div>
           <p class="mt-4 max-w-xs text-[13px] leading-6 app-muted">

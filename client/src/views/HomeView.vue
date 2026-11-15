@@ -30,6 +30,7 @@ import { useReveal } from '@/composables/useReveal'
 import { useTheme } from '@/composables/useTheme'
 import { useUserStore } from '@/stores/user'
 import { APP_TITLE, isMockMode } from '@/config'
+import BrandMark from '@/components/brand/BrandMark.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -296,11 +297,7 @@ const faqs = [
     >
       <div class="mx-auto flex h-16 w-full max-w-6xl items-center gap-3 px-5 sm:px-8">
         <RouterLink :to="{ name: 'home' }" class="flex shrink-0 items-center gap-2.5">
-          <span
-            class="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-brand-light to-brand text-sm font-bold text-white shadow-lg shadow-brand/25"
-          >
-            M
-          </span>
+          <BrandMark :size="36" :radius="8" class="drop-shadow" />
           <span class="hidden text-[15px] font-semibold tracking-tight app-text sm:block">
             {{ APP_TITLE }}
           </span>
@@ -511,11 +508,7 @@ const faqs = [
 
                 <!-- 回答 -->
                 <div class="flex gap-2.5">
-                  <span
-                    class="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-brand-light to-brand text-[11px] font-bold text-white"
-                  >
-                    M
-                  </span>
+                  <BrandMark :size="28" :radius="6" class="mt-0.5" />
                   <div class="min-w-0 flex-1">
                     <div class="rounded-2xl rounded-tl-md border app-border app-panel px-4 py-3">
                       <p class="text-[13px] leading-6 app-text-secondary">
