@@ -4,7 +4,8 @@ import { defineStore } from 'pinia'
 import {
   createBrief,
   deleteBrief,
-  downloadReport,
+  downloadExport,
+  fetchPrintHtml,
   getBrief,
   listBriefs,
   rerunBrief,
@@ -99,17 +100,50 @@ export const useResearchStore = defineStore('research', () => {
     }
   }
 
-  async function exportReport(id, title) {
-    const response = await downloadReport(id)
-    const blob = new Blob([response.data], { type: 'text/markdown;charset=utf-8' })
+  function saveBlob(blob, filename) {
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `${(title || '研究辅助报告').slice(0, 40)}.md`
+    link.download = filename
     document.body.appendChild(link)
     link.click()
     link.remove()
     URL.revokeObjectURL(url)
+  }
+
+  /** 导出 md / docx */
+  async function exportFile(id, format, title) {
+    const response = await downloadExport(id, format)
+    const type =
+      format === 'docx'
+        ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        : 'text/markdown;charset=utf-8'
+    const name = `${(title || '研究辅助报告').slice(0, 40)}.${format}`
+    saveBlob(new Blob([response.data], { type }), name)
+  }
+
+  /**
+   * 导出 PDF：后端给一份打印专用 HTML，前端打开后调起浏览器打印，
+   * 用户选「另存为 PDF」。与「成果导出」用同一套做法（服务端没有 PDF 库）。
+   */
+  async function exportPdf(id) {
+    const response = await fetchPrintHtml(id)
+    const html = typeof response.data === 'string' ? response.data : await response.data.text()
+    const win = window.open('', '_blank')
+    if (!win) {
+      throw new Error('浏览器拦截了弹窗，请允许本页面弹出窗口后重试')
+    }
+    win.document.open()
+    win.document.write(html)
+    win.document.close()
+    setTimeout(() => {
+      try {
+        win.focus()
+        win.print()
+      } catch (error) {
+        console.warn('打印调用失败', error)
+      }
+    }, 600)
   }
 
   function reset() {
@@ -129,7 +163,8 @@ export const useResearchStore = defineStore('research', () => {
     open,
     rerun,
     remove,
-    exportReport,
+    exportFile,
+    exportPdf,
     reset,
     stopPolling,
   }
