@@ -471,7 +471,7 @@ const faqs = [
                     class="max-w-[85%] rounded-2xl rounded-br-md px-4 py-2.5 text-[13px] leading-6 text-white"
                     style="background-image: linear-gradient(135deg, #25c39c, #0f9b7a)"
                   >
-                    这几篇 RAG 综述的方法差异在哪？
+                    这两篇 RAG 综述的划分方式有什么不同？
                   </p>
                 </div>
 
@@ -485,8 +485,8 @@ const faqs = [
                   <div class="min-w-0 flex-1">
                     <div class="rounded-2xl rounded-tl-md border app-border app-panel px-4 py-3">
                       <p class="text-[13px] leading-6 app-text-secondary">
-                        三篇综述对 RAG 的划分基本一致，但侧重不同：Gao 等按「检索—生成—增强」三段式组织，
-                        Gupta 等按时间线梳理演进，MST-R 则聚焦检索阶段的多级调优。<span
+                        两篇综述对 RAG 的组织方式不同：Gao 等按「检索—生成—增强」三段式展开，
+                        Gupta 等则按时间线梳理从朴素 RAG 到模块化 RAG 的演进。<span
                           class="ml-0.5 inline-block h-3.5 w-[7px] translate-y-0.5 animate-pulse rounded-sm bg-brand-light align-middle"
                         />
                       </p>
@@ -498,9 +498,9 @@ const faqs = [
                           <span class="accent-bar h-6 w-[3px] shrink-0 rounded-full bg-brand-light" />
                           <el-icon class="shrink-0 text-[13px] app-accent"><Document /></el-icon>
                           <span class="min-w-0 flex-1 truncate font-mono text-[11px] app-muted">
-                            2410.12837v1.pdf · 第 3 页
+                            2312.10997v5.pdf · 第 3 页
                           </span>
-                          <span class="shrink-0 font-mono text-[10px] app-accent">0.87</span>
+                          <span class="shrink-0 font-mono text-[10px] app-accent">0.91</span>
                         </div>
                         <div
                           class="flex items-center gap-2 rounded-lg border app-border app-canvas px-2.5 py-2"
@@ -508,9 +508,9 @@ const faqs = [
                           <span class="h-6 w-[3px] shrink-0 rounded-full" style="background: #38bdf8" />
                           <el-icon class="shrink-0 text-[13px]" style="color: #38bdf8"><Document /></el-icon>
                           <span class="min-w-0 flex-1 truncate font-mono text-[11px] app-muted">
-                            2412.10313v1.pdf · 第 2 页
+                            2410.12837v1(1).pdf · 第 2 页
                           </span>
-                          <span class="shrink-0 font-mono text-[10px] app-accent">0.79</span>
+                          <span class="shrink-0 font-mono text-[10px] app-accent">0.86</span>
                         </div>
                       </div>
                     </div>
@@ -542,7 +542,7 @@ const faqs = [
                   </span>
                 </div>
                 <div class="mt-2.5 flex items-center gap-2 text-[10px] app-faint">
-                  <span class="rounded-md border app-border px-1.5 py-0.5">范围：3 篇论文</span>
+                  <span class="rounded-md border app-border px-1.5 py-0.5">范围：2 篇论文</span>
                   <span class="rounded-md border app-border px-1.5 py-0.5">Top-K：5</span>
                   <span class="rounded-md border app-border px-1.5 py-0.5">阈值：0.20</span>
                   <span class="ml-auto animate-float">流式输出中…</span>
