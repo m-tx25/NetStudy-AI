@@ -75,10 +75,26 @@ class Settings(BaseSettings):
         """
         return self.SECRET_KEY.strip() in ("", DEFAULT_SECRET_KEY)
 
-    # ---------------- 上传 ----------------
-    # 与前端 client/src/config/index.js 的 UPLOAD_LIMITS.maxSizeMB 保持一致
-    MAX_UPLOAD_SIZE_MB: int = 50
+    # ---------------- 上传与存储 ----------------
+    # 单个文件上限（MB）。默认 100MB；改这里或用环境变量 MAX_UPLOAD_SIZE_MB 覆盖，
+    # 不要在前端或路由里再写死一份。
+    MAX_UPLOAD_SIZE_MB: int = 100
     UPLOAD_DIR: str = "./data/uploads"
+    # 流式读写的分块大小（KB）。100MB 文件按 1MB 分块，内存占用与文件大小无关。
+    UPLOAD_CHUNK_SIZE_KB: int = 1024
+    # 总存储配额（GB）：磁盘 50GB，预留系统+数据库+向量库空间
+    STORAGE_TOTAL_QUOTA_GB: float = 40.0
+    # 每个用户的文献存储配额（GB）
+    STORAGE_PER_USER_QUOTA_GB: float = 5.0
+    # 磁盘剩余空间低于该值时拒绝上传（GB）
+    STORAGE_MIN_FREE_GB: float = 5.0
+    # 同时执行的 PDF 解析任务数（2 核 4GB：保持 1，避免内存与 CPU 打满）
+    MAX_CONCURRENT_PARSE_TASKS: int = 1
+    # 同时执行的对比/研究类 LLM 任务数
+    MAX_CONCURRENT_LLM_TASKS: int = 1
+    # 评审演示模式：启动时从 DEMO_PAPERS_DIR 预置论文并缓存解析结果
+    DEMO_MODE: bool = False
+    DEMO_PAPERS_DIR: str = "./data/demo_papers"
 
     # ---------------- 学术文献检索（外部数据源） ----------------
     # OpenAlex / Crossref 的 polite pool 需要 mailto：填了会显著降低被限流概率。

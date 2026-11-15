@@ -32,9 +32,9 @@ export const STORAGE_KEYS = {
   selectedModel: 'rag.model',
 }
 
-/** 知识库文档上传限制（与后端 ALLOWED_EXTENSIONS 保持一致） */
+/** 知识库文档上传限制（后端会下发真实上限，这里是兜底默认值） */
 export const UPLOAD_LIMITS = {
-  maxSizeMB: 50,
+  maxSizeMB: 100,
   accept:
     '.pdf,.doc,.docx,.txt,.md,.markdown,.csv,.xlsx,.xls,.pptx,.html,.htm,.json',
 }

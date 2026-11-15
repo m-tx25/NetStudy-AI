@@ -1,9 +1,10 @@
 <script setup>
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Delete, Document, UploadFilled } from '@element-plus/icons-vue'
 
 import { useKnowledgeStore } from '@/stores/knowledge'
+import { fetchStorageStatus } from '@/api/storage'
 import { UPLOAD_LIMITS } from '@/config'
 import { formatBytes } from '@/utils/format'
 import { notifyError } from '@/utils/notify'
@@ -29,6 +30,21 @@ const visible = computed({
 
 const totalSize = computed(() => selectedFiles.value.reduce((sum, file) => sum + file.size, 0))
 
+// 单文件上限由后端配置（MAX_UPLOAD_SIZE_MB）决定；这里只保留一个兜底默认值，
+// 打开弹窗时向后端取一次，避免前后端各写死一份数字。
+const maxSizeMB = ref(UPLOAD_LIMITS.maxSizeMB)
+const diskFreeGb = ref(null)
+
+onMounted(async () => {
+  try {
+    const status = await fetchStorageStatus()
+    if (status?.limits?.maxUploadMb) maxSizeMB.value = status.limits.maxUploadMb
+    if (status?.disk?.freeGb) diskFreeGb.value = status.disk.freeGb
+  } catch {
+    /* 取不到就用默认值，不阻塞上传 */
+  }
+})
+
 const acceptList = computed(() => UPLOAD_LIMITS.accept.split(',').join(','))
 
 function resetFiles() {
@@ -41,9 +57,9 @@ watch(visible, (open) => {
 })
 
 function validate(file) {
-  const maxBytes = UPLOAD_LIMITS.maxSizeMB * 1024 * 1024
+  const maxBytes = maxSizeMB.value * 1024 * 1024
   if (file.size > maxBytes) {
-    ElMessage.warning(`「${file.name}」超过 ${UPLOAD_LIMITS.maxSizeMB}MB 限制`)
+    ElMessage.warning(`「${file.name}」超过 ${maxSizeMB.value}MB 限制`)
     return false
   }
   const duplicate = selectedFiles.value.some(
@@ -145,7 +161,8 @@ async function submit() {
       <div class="el-upload__text">把文件拖到这里，或 <em>点击选择文件</em></div>
       <template #tip>
         <div class="el-upload__tip">
-          支持 {{ acceptList }}，单个文件不超过 {{ UPLOAD_LIMITS.maxSizeMB }}MB，一次最多 20 个
+          支持 {{ acceptList }}，单个文件不超过 {{ maxSizeMB }}MB，一次最多 20 个
+        <span v-if="diskFreeGb !== null" class="ml-1">· 服务器剩余 {{ diskFreeGb }}GB</span>
         </div>
       </template>
     </el-upload>
