@@ -6,12 +6,10 @@ import {
   ChatDotRound,
   CircleCheck,
   Coin,
-  Connection,
   DataAnalysis,
   Document,
   DocumentChecked,
   Expand,
-  Film,
   Files,
   Lock,
   Moon,
@@ -46,6 +44,7 @@ const navLinks = [
   { label: '产品能力', href: '#features' },
   { label: '使用流程', href: '#workflow' },
   { label: '技术架构', href: '#tech' },
+  { label: '适用场景', href: '#scenarios' },
   { label: '常见问题', href: '#faq' },
 ]
 
@@ -77,9 +76,9 @@ function goWorkspace() {
  * ------------------------------------------------------------------ */
 const stats = [
   { value: '10+', label: '文档格式解析', desc: 'PDF / Word / 表格 / 网页' },
-  { value: 'Top-K', label: '可调召回范围', desc: '按知识库精确圈定检索域' },
-  { value: 'SSE', label: '流式回答', desc: '首字节即开始输出' },
-  { value: '100%', label: '答案带出处', desc: '每条结论可点开原文核对' },
+  { value: '2~6 篇', label: '同屏论文对比', desc: '维度矩阵 · 演进 · 空白' },
+  { value: '3 种', label: '成果导出格式', desc: 'Markdown / Word / PDF' },
+  { value: '100%', label: '结论可溯源', desc: '论文名 · 章节 · 页码' },
 ]
 
 /* ------------------------------------------------------------------ *
@@ -87,40 +86,40 @@ const stats = [
  * ------------------------------------------------------------------ */
 const features = [
   {
-    icon: Files,
-    title: '全格式文档接入',
-    desc: 'PDF、Word、Markdown、Excel、PPT 与网页一键上传，自动解析、分块并向量化。',
-    tag: '上传即用',
+    icon: Search,
+    title: '多源文献检索',
+    desc: '按主题、作者或 DOI 在学术源中检索，命中的论文直接收进文献库，省去手工建库。',
+    tag: '检索入库',
   },
   {
-    icon: Search,
-    title: '语义检索召回',
-    desc: '向量检索锁定与问题最相关的片段，避免大模型在整篇文档里「凭印象作答」。',
-    tag: '语义匹配',
+    icon: Files,
+    title: '文献库与标签',
+    desc: '论文、阅读笔记与标签统一管理，按课题分组；个人库与团队库分开存放。',
+    tag: '统一管理',
   },
   {
     icon: DocumentChecked,
-    title: '引用可溯源',
-    desc: '回答中的关键结论附带原文出处、页码与相关度，点开即可逐条核对。',
-    tag: '有据可依',
+    title: '论文结构化解析',
+    desc: '按章节切分并保留页码，图表、指标与结论都能定位回原文位置。',
+    tag: '页码对齐',
   },
   {
-    icon: Lock,
-    title: '数据不出内网',
-    desc: '支持私有化部署，文档与向量库全部落在你指定的环境中。',
-    tag: '私有化',
+    icon: DataAnalysis,
+    title: '多篇论文对比',
+    desc: '选 2~6 篇自动归纳对比维度，输出带页码的矩阵、演进时间轴与研究空白。',
+    tag: '2~6 篇',
   },
   {
-    icon: OfficeBuilding,
-    title: '面向团队协作',
-    desc: '知识库分级管理、会话留痕、检索范围与召回参数随问随调。',
-    tag: '多知识库',
+    icon: TrendCharts,
+    title: '研究助手',
+    desc: '基于所选论文给出研究方向、可研究问题与技术路线，逐条标注「文献依据 / AI 假设」。',
+    tag: '选题辅助',
   },
   {
-    icon: Connection,
-    title: '开放接口',
-    desc: '标准 REST + SSE 流式接口，方便接入企业现有门户与业务系统。',
-    tag: '易集成',
+    icon: Document,
+    title: '成果导出',
+    desc: '阅读报告、综述初稿、对比报告一键导出 Word / PDF，参考文献按 GB/T 7714 生成。',
+    tag: '不编 DOI',
   },
 ]
 
@@ -130,26 +129,26 @@ const features = [
 const workflow = [
   {
     step: '01',
-    title: '创建知识库',
-    desc: '按业务线或部门划分知识库，作为检索时的最小范围单位。',
-    icon: Files,
+    title: '检索或上传',
+    desc: '从学术源检索论文，或直接上传 PDF，统一收进文献库。',
+    icon: Search,
   },
   {
     step: '02',
-    title: '上传并解析文档',
-    desc: '上传后自动完成解析、清洗、分块与向量化，进度实时可见。',
+    title: '解析并建索引',
+    desc: '章节切分、页码对齐、指标抽取，再写入向量索引。',
     icon: Document,
   },
   {
     step: '03',
-    title: '提问并获得引用',
-    desc: '选定检索范围后提问，回答逐字流式输出，并附上来源片段。',
+    title: '对比与追问',
+    desc: '选 2~6 篇做横向对比，或限定论文范围提问，答案精确到页码。',
     icon: ChatDotRound,
   },
   {
     step: '04',
-    title: '核对与沉淀',
-    desc: '点开引用回溯原文，把高频问题沉淀为团队标准答案。',
+    title: '导出成果',
+    desc: '把结论整理成阅读报告、综述初稿或对比报告，直接交付。',
     icon: CircleCheck,
   },
 ]
@@ -157,63 +156,63 @@ const workflow = [
 /* ------------------------------------------------------------------ *
  * 技术架构
  * ------------------------------------------------------------------ */
-const pipeline = ['文档上传', '解析清洗', '语义分块', '向量化', '检索召回', '生成回答']
+const pipeline = ['文献检索', '解析入库', '章节切分', '向量化', '检索召回', '引用生成']
 
 const architecture = [
   {
     title: '数据接入层',
     icon: DataAnalysis,
-    items: ['多格式解析器', '增量索引更新', '文档版本管理', '失败任务重试'],
+    items: ['多源检索与去重', 'PDF 结构化解析', '章节与页码对齐', '文献库与标签'],
   },
   {
-    title: '向量检索层',
+    title: '检索与分析层',
     icon: Position,
-    items: ['文本分块与 Embedding', '相似度阈值过滤', 'Top-K 召回可调', '多知识库联合检索'],
+    items: ['BM25 与向量混合检索', '按篇配额召回', '重排与证据判定', '对比维度自动归纳'],
   },
   {
-    title: '生成与引用层',
+    title: '生成与成果层',
     icon: Reading,
-    items: ['上下文拼装与提示词控制', 'SSE 流式输出', '引用片段与相关度', '回答可重新生成'],
+    items: ['引用对齐到章节页码', '研究方向与假设标注', 'Word / PDF / Markdown 导出', 'GB/T 7714 参考文献'],
   },
 ]
 
-const guards = ['传输加密', '权限分级', '操作审计', '私有化部署']
+const guards = ['权限分级', '团队隔离', '操作审计', '私有化部署']
 
 /* ------------------------------------------------------------------ *
  * 适用场景
  * ------------------------------------------------------------------ */
 const scenarios = [
   {
-    key: 'edu',
-    label: '教育培训',
+    key: 'research',
+    label: '开题调研',
+    icon: Search,
+    title: '一个主题，先把领域摸清',
+    desc: '按关键词与 DOI 聚合检索候选论文，收进文献库逐篇解析，再决定精读哪几篇。',
+    points: ['多源检索与去重', '按课题建文献库', '章节级摘要'],
+  },
+  {
+    key: 'review',
+    label: '文献综述',
     icon: Reading,
-    title: '课程资料变成随时可问的助教',
-    desc: '把课件、习题解析、培养方案接入知识库，学生提问直接命中讲义原文，老师不必重复答疑。',
-    points: ['课件与讲义统一检索', '答案标注章节出处', '按班级划分知识库'],
+    title: '把十篇论文压成一页对照表',
+    desc: '选 2~6 篇做横向对比，自动归纳对比维度，输出带页码的矩阵与演进脉络。',
+    points: ['对比维度自动归纳', '结论带原文页码', '研究空白提示'],
   },
   {
-    key: 'law',
-    label: '法务合规',
+    key: 'writing',
+    label: '论文写作',
+    icon: Document,
+    title: '从读到写，成果直接导出',
+    desc: '阅读报告、综述初稿、研究现状整理，一键导出 Word 与 PDF，参考文献格式合规。',
+    points: ['GB/T 7714 参考文献', '只从真实文献生成', 'Word / PDF 双格式'],
+  },
+  {
+    key: 'team',
+    label: '团队协作',
     icon: OfficeBuilding,
-    title: '合同与制度条款逐条可核',
-    desc: '合同模板、内部制度、监管文件入库后，条款级检索让每一次引用都有原文支撑。',
-    points: ['条款级精确召回', '引用带页码定位', '历史版本可追溯'],
-  },
-  {
-    key: 'tech',
-    label: '研发支持',
-    icon: Connection,
-    title: '技术文档与接口手册即问即答',
-    desc: '把接口文档、部署手册、故障复盘沉淀进知识库，新同学不必再翻十几个仓库找答案。',
-    points: ['多仓库文档聚合', '代码片段高亮展示', '会话记录可回溯'],
-  },
-  {
-    key: 'service',
-    label: '客户服务',
-    icon: ChatDotRound,
-    title: '客服话术与工单经验复用',
-    desc: '标准话术、常见故障处理流程入库，坐席提问即得带出处的处置建议。',
-    points: ['标准话术一键检索', '处理流程分步输出', '高频问题沉淀复用'],
+    title: '一个课题组共用一套文献底稿',
+    desc: '团队文献库、角色权限与入队审批，成员看到的是同一份解析结果与结论。',
+    points: ['团队文献库共享', '负责人 / 管理员 / 成员', '操作全程留痕'],
   },
 ]
 
@@ -227,28 +226,28 @@ const currentScenario = computed(
  * ------------------------------------------------------------------ */
 const faqs = [
   {
-    q: '和直接把文档丢给大模型有什么区别？',
-    a: '直接投喂受限于上下文长度，且模型容易「编」。本系统先用向量检索在你的知识库里定位最相关的片段，再让模型基于这些片段作答，因此答案更准、更短，并且每条结论都能指出原文出处。',
+    q: '和直接把论文丢给 ChatGPT 有什么区别？',
+    a: '直接贴论文受限于上下文长度，模型也容易「编」结论。本系统先在你选定的论文范围内检索最相关的章节，再让模型基于这些片段作答；引用会落到具体论文、章节与页码，没找到依据时会明确列出，而不是硬编。',
   },
   {
-    q: '支持哪些文档格式？',
-    a: 'PDF、Word（doc/docx）、Markdown、纯文本、CSV、Excel、PPT、HTML 与 JSON 都可以上传，系统会按格式选择解析器，自动分块并写入向量库。',
+    q: '支持哪些文献来源和格式？',
+    a: '可以从学术源按主题、作者或 DOI 检索并收进文献库，也可以直接上传 PDF、Word、Markdown 等文件；系统按格式选择解析器，切分章节、对齐页码后写入向量库。',
   },
   {
-    q: '文档数据会上传到第三方吗？',
-    a: '不会。向量库与文件存储都部署在你指定的环境里，支持完全离线的私有化部署；界面上也提供传输加密、权限分级与操作审计能力。',
+    q: '对比结论会不会是编的？',
+    a: '对比矩阵要求每个单元格标注原文页码，抽取不到就显示「未提及」；卡片抽取失败的论文不会进入对比，并会把每篇的失败原因列出来，而不是笼统说「全部失败」。',
   },
   {
-    q: '回答不准时可以怎么调整？',
-    a: '提问前可以勾选参与检索的知识库，并调整召回数量 Top-K 与相似度阈值：范围收窄、阈值提高会让答案更保守但更精准。也可以直接点开引用片段核对原文。',
+    q: '导出的参考文献能直接用吗？',
+    a: '支持 GB/T 7714、APA、IEEE 三种格式，只从文献库里真实存在的论文生成，不补 DOI、不编作者；导出前可以先在成果页预览。',
   },
   {
-    q: '多人协作如何管理？',
-    a: '知识库与文档按账号维度隔离，会话自动留痕并按日期归档；管理员可以统一维护知识库与文档生命周期。',
+    q: '团队怎么协作？',
+    a: '团队分负责人 / 管理员 / 成员三种角色，文献库与知识库按团队共享；通过邀请码或搜索申请入队，由管理员审批，操作全程留痕。',
   },
   {
-    q: '如何接入我们自己的系统？',
-    a: '后端提供标准 REST 接口与 SSE 流式问答接口，前端也内置了会话、知识库、检索参数的完整实现，可直接对接企业门户或工单系统。',
+    q: '能不能私有化部署？',
+    a: '可以。文件、向量库与数据库都部署在指定环境，生成模型走 OpenAI 兼容协议，可接本地 Ollama 或内网网关，文档不出内网。',
   },
 ]
 </script>
@@ -397,17 +396,17 @@ const faqs = [
                 <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-light opacity-75" />
                 <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-brand-light" />
               </span>
-              检索增强生成 · RAG 架构
+              学术文献 · RAG 研究平台
             </span>
 
             <h1 class="mt-6 text-balance text-[34px] font-semibold leading-[1.25] tracking-tight app-text sm:text-[44px] lg:text-[50px]">
-              让每一个答案<br />
-              都能追溯到<span class="tech-gradient-text">原文出处</span>
+              把海量论文<br />
+              读成<span class="tech-gradient-text">一页可核对的结论</span>
             </h1>
 
             <p class="mt-6 max-w-xl text-[15px] leading-8 app-muted">
-              把团队的文档交给大模型之前，先用向量检索锁定最相关的片段。
-              回答有据可依、结论可核可查——这是企业场景使用 AI 的底线。
+              从检索、解析到对比和成稿：每条结论都能回到论文的具体章节与页码，
+              参考文献只从真实文献生成——这是把 AI 用于科研的底线。
             </p>
 
             <div class="mt-9 flex flex-wrap items-center gap-3">
@@ -458,10 +457,10 @@ const faqs = [
                 <span class="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" />
                 <span class="h-2.5 w-2.5 rounded-full bg-[#febc2e]" />
                 <span class="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
-                <span class="ml-3 font-mono text-[11px] app-faint">rag-workspace / chat</span>
+                <span class="ml-3 font-mono text-[11px] app-faint">matrix-scholar / compare</span>
                 <span class="ml-auto inline-flex items-center gap-1.5 text-[11px] app-muted">
                   <span class="h-1.5 w-1.5 rounded-full bg-brand-light" />
-                  已连接知识库
+                  已连接文献库
                 </span>
               </div>
 
@@ -472,7 +471,7 @@ const faqs = [
                     class="max-w-[85%] rounded-2xl rounded-br-md px-4 py-2.5 text-[13px] leading-6 text-white"
                     style="background-image: linear-gradient(135deg, #25c39c, #0f9b7a)"
                   >
-                    员工入职当天需要提交哪些材料？
+                    这几篇 RAG 综述的方法差异在哪？
                   </p>
                 </div>
 
@@ -481,13 +480,13 @@ const faqs = [
                   <span
                     class="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-brand-light to-brand text-[11px] font-bold text-white"
                   >
-                    R
+                    M
                   </span>
                   <div class="min-w-0 flex-1">
                     <div class="rounded-2xl rounded-tl-md border app-border app-panel px-4 py-3">
                       <p class="text-[13px] leading-6 app-text-secondary">
-                        根据《员工入职手册（2024 修订版）》，入职当天需提交：身份证复印件 2 份、
-                        学历证书复印件、体检报告、一寸照片 3 张，并现场签署保密协议。<span
+                        三篇综述对 RAG 的划分基本一致，但侧重不同：Gao 等按「检索—生成—增强」三段式组织，
+                        Gupta 等按时间线梳理演进，MST-R 则聚焦检索阶段的多级调优。<span
                           class="ml-0.5 inline-block h-3.5 w-[7px] translate-y-0.5 animate-pulse rounded-sm bg-brand-light align-middle"
                         />
                       </p>
@@ -499,7 +498,7 @@ const faqs = [
                           <span class="accent-bar h-6 w-[3px] shrink-0 rounded-full bg-brand-light" />
                           <el-icon class="shrink-0 text-[13px] app-accent"><Document /></el-icon>
                           <span class="min-w-0 flex-1 truncate font-mono text-[11px] app-muted">
-                            员工入职手册.pdf · 第 6 页
+                            2410.12837v1.pdf · 第 3 页
                           </span>
                           <span class="shrink-0 font-mono text-[10px] app-accent">0.87</span>
                         </div>
@@ -509,7 +508,7 @@ const faqs = [
                           <span class="h-6 w-[3px] shrink-0 rounded-full" style="background: #38bdf8" />
                           <el-icon class="shrink-0 text-[13px]" style="color: #38bdf8"><Document /></el-icon>
                           <span class="min-w-0 flex-1 truncate font-mono text-[11px] app-muted">
-                            HR 流程说明.md · 入职材料清单
+                            2412.10313v1.pdf · 第 2 页
                           </span>
                           <span class="shrink-0 font-mono text-[10px] app-accent">0.79</span>
                         </div>
@@ -534,7 +533,7 @@ const faqs = [
                 >
                   <el-icon class="text-sm app-faint"><Search /></el-icon>
                   <span class="flex-1 truncate text-[12px] app-faint">
-                    继续追问，例如「体检报告有什么有效期要求？」
+                    继续追问，例如「第二篇用了哪些评测指标？」
                   </span>
                   <span
                     class="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-brand-light to-brand text-white"
@@ -543,7 +542,7 @@ const faqs = [
                   </span>
                 </div>
                 <div class="mt-2.5 flex items-center gap-2 text-[10px] app-faint">
-                  <span class="rounded-md border app-border px-1.5 py-0.5">知识库：人力资源</span>
+                  <span class="rounded-md border app-border px-1.5 py-0.5">范围：3 篇论文</span>
                   <span class="rounded-md border app-border px-1.5 py-0.5">Top-K：5</span>
                   <span class="rounded-md border app-border px-1.5 py-0.5">阈值：0.20</span>
                   <span class="ml-auto animate-float">流式输出中…</span>
@@ -560,11 +559,11 @@ const faqs = [
           <div class="reveal max-w-2xl">
             <p class="font-mono text-xs tracking-[0.2em] app-accent">CAPABILITIES</p>
             <h2 class="mt-3 text-[28px] font-semibold tracking-tight app-text sm:text-[34px]">
-              把文档变成可检索、可核对的知识
+              从检索到成稿，一条链路走完
             </h2>
             <p class="mt-4 text-[15px] leading-8 app-muted">
-              从上传解析到流式回答，每一步都为「可核查」服务：检索范围能收窄，召回参数能调整，
-              引用片段能点开。
+              检索、解析、对比、研究助手与成果导出共享同一份文献底稿——
+              每一步都保留页码，随时可以回原文核对。
             </p>
           </div>
 
@@ -600,11 +599,11 @@ const faqs = [
             </span>
             <span class="inline-flex items-center gap-2 text-[13px] app-muted">
               <el-icon class="app-accent"><DataAnalysis /></el-icon>
-              分块与召回参数可在界面调整
+              对比维度与召回参数可在界面调整
             </span>
             <span class="inline-flex items-center gap-2 text-[13px] app-muted">
               <el-icon class="app-accent"><TrendCharts /></el-icon>
-              会话与文档操作全程留痕
+              引用与操作全程留痕
             </span>
           </div>
         </div>
@@ -616,7 +615,7 @@ const faqs = [
           <div class="reveal max-w-2xl">
             <p class="font-mono text-xs tracking-[0.2em] app-accent">WORKFLOW</p>
             <h2 class="mt-3 text-[28px] font-semibold tracking-tight app-text sm:text-[34px]">
-              四步完成一次可信问答
+              四步，从选题到成稿
             </h2>
           </div>
 
@@ -724,7 +723,7 @@ const faqs = [
           <div class="reveal max-w-2xl">
             <p class="font-mono text-xs tracking-[0.2em] app-accent">SCENARIOS</p>
             <h2 class="mt-3 text-[28px] font-semibold tracking-tight app-text sm:text-[34px]">
-              已经沉淀了文档的团队，都能直接用
+              从开题到投稿，都能用上
             </h2>
           </div>
 
@@ -770,9 +769,9 @@ const faqs = [
             <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
               <div
                 v-for="card in [
-                  { icon: Film, title: '多模态文件', desc: '图文混排的 PDF 也能解析出结构化文本' },
-                  { icon: Coin, title: '成本可控', desc: '只把命中的片段送进模型，避免整篇投喂' },
-                  { icon: User, title: '权限隔离', desc: '按账号划分知识库与文档可见范围' },
+                  { icon: DocumentChecked, title: '页码可追溯', desc: '结论、矩阵与引用都带原文页码，随时回查' },
+                  { icon: Coin, title: '成本可控', desc: '只把命中的章节送进模型，避免整篇投喂' },
+                  { icon: User, title: '团队隔离', desc: '按团队划分文献库与知识库的可见范围' },
                 ]"
                 :key="card.title"
                 class="flex items-start gap-3 rounded-2xl border app-border app-canvas p-4"
