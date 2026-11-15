@@ -5,17 +5,19 @@
 """
 from __future__ import annotations
 
+import io
 import json
 import logging
 from pathlib import Path
+from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DbSession
 from app.models import Document, KnowledgeBase, ResearchBrief
 from app.schemas import OkOut, ResearchBriefCreateIn, ResearchBriefOut
-from app.services import access, research
+from app.services import access, reports, research
 from app.tasks import dispatch_research
 
 logger = logging.getLogger(__name__)
@@ -191,5 +193,62 @@ async def download_report(
         media_type="text/markdown; charset=utf-8",
         headers={
             "Content-Disposition": f'attachment; filename="research-{brief.id}.md"'
+        },
+    )
+
+
+@router.get("/briefs/{brief_id}/export")
+async def export_brief(
+    brief_id: str,
+    user: CurrentUser,
+    db: DbSession,
+    format: str = Query("md", pattern="^(md|docx|html)$"),
+) -> Response:
+    """导出研究辅助报告：md / docx / html（html 用于浏览器打印成 PDF）。
+
+    与「成果导出」（模块八）共用 ``reports.to_docx`` / ``reports.to_html``，
+    保证两条链路排版一致；PDF 仍走「打印视图 + 另存为 PDF」。
+    """
+    brief = await _owned(db, brief_id, user.id)
+    if not brief.report_md:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="报告尚未生成（任务可能还在进行或已失败）",
+        )
+
+    title = brief.goal or "研究辅助报告"
+    safe_title = "".join(ch for ch in title if ch not in '\\/:*?"<>|')[:60] or "research"
+
+    if format == "md":
+        return Response(
+            content=brief.report_md.encode("utf-8"),
+            media_type="text/markdown; charset=utf-8",
+            headers={
+                "Content-Disposition": f"attachment; filename*=UTF-8''{quote(safe_title)}.md"
+            },
+        )
+
+    if format == "html":
+        return Response(
+            content=reports.to_html(brief.report_md, title).encode("utf-8"),
+            media_type="text/html; charset=utf-8",
+        )
+
+    try:
+        document = reports.to_docx(brief.report_md, title)
+        buffer = io.BytesIO()
+        document.save(buffer)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("研究助手 DOCX 生成失败 %s", brief_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"DOCX 生成失败：{exc}",
+        ) from exc
+
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(safe_title)}.docx"
         },
     )

@@ -81,3 +81,12 @@ chroma.log
 
 # pytest 临时目录（--basetemp 产生的）
 pytest-of-*/
+
+# 调试/试探脚本（不属于本项目）
+_sshv.out
+scripts/_recon*.py
+scripts/_ssh*.py
+scripts/_ttl*.py
+scripts/_banner*.py
+scripts/_port443*.py
+scripts/ssh_proxy.py

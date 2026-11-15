@@ -1,8 +1,9 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, Download, Document, Refresh, Right, Star } from '@element-plus/icons-vue'
+import { Delete, Download, Document, Printer, Refresh, Right, Star } from '@element-plus/icons-vue'
 
+import { getPaperProfile } from '@/api/compare'
 import { listDocuments } from '@/api/knowledge'
 import { useKnowledgeStore } from '@/stores/knowledge'
 import { useResearchStore } from '@/stores/research'
@@ -56,8 +57,58 @@ function evidenceText(item) {
 }
 
 function paperName(documentId) {
+  // 优先用论文卡片里的标题（历史报告打开时 documents 列表可能是空的），
+  // 其次用当前知识库里的文件名，最后才退化成 id 片段。
+  const meta = paperMeta.value[documentId]
+  if (meta?.title) {
+    // 带上年份：同名前缀的论文（如两篇 RAG 主题）否则分不清
+    const short = meta.title.split(':')[0].slice(0, 24)
+    return meta.year ? `${short} (${meta.year})` : short
+  }
   const doc = documents.value.find((item) => item.id === documentId)
-  return doc ? doc.name.replace(/\.pdf$/i, '').slice(0, 24) : documentId.slice(0, 8)
+  if (doc) return doc.name.replace(/\.pdf$/i, '').slice(0, 24)
+  return documentId.slice(0, 10)
+}
+
+/** 论文标题缓存（documentId → {title, year}），用于证据出处显示 */
+const paperMeta = ref({})
+
+async function ensurePaperMeta(ids) {
+  const missing = (ids || []).filter((id) => id && !paperMeta.value[id])
+  await Promise.all(
+    missing.map(async (id) => {
+      try {
+        const profile = await getPaperProfile(id, { silent: true })
+        paperMeta.value[id] = { title: profile.title, year: profile.year }
+      } catch {
+        // 卡片不存在属正常（历史报告 / 换库），用 id 兜底即可
+        paperMeta.value[id] = { title: '', year: 0 }
+      }
+    }),
+  )
+}
+
+/** 从当前报告的所有证据里收集 documentId，补标题 */
+function collectEvidenceIds(brief) {
+  const ids = new Set()
+  const sections = [brief?.directions, brief?.questions]
+  for (const section of sections) {
+    for (const item of section || []) {
+      for (const ev of item?.evidence || []) {
+        if (ev?.documentId) ids.add(ev.documentId)
+      }
+    }
+  }
+  for (const item of brief?.novelty?.coverage || []) {
+    for (const ev of item?.evidence || []) if (ev?.documentId) ids.add(ev.documentId)
+  }
+  for (const item of brief?.novelty?.openings || []) {
+    for (const ev of item?.evidence || []) if (ev?.documentId) ids.add(ev.documentId)
+  }
+  for (const group of brief?.relatedWork?.groups || []) {
+    for (const ev of group?.evidence || []) if (ev?.documentId) ids.add(ev.documentId)
+  }
+  return [...ids]
 }
 
 async function loadDocuments() {
@@ -107,6 +158,7 @@ async function startResearch() {
 async function openBrief(item) {
   try {
     await researchStore.open(item.id)
+    await ensurePaperMeta(collectEvidenceIds(researchStore.current))
   } catch (error) {
     notifyError(error, '打开失败')
   }
@@ -137,15 +189,32 @@ async function removeCurrent() {
   ElMessage.success('已删除')
 }
 
-async function exportReport() {
+async function download(format) {
   if (!current.value) return
   try {
-    await researchStore.exportReport(current.value.id, current.value.goal || '研究辅助报告')
-    ElMessage.success('报告已开始下载')
+    await researchStore.exportFile(current.value.id, format, current.value.goal || '研究辅助报告')
+    ElMessage.success(format === 'docx' ? 'Word 已开始下载' : 'Markdown 已开始下载')
   } catch (error) {
     notifyError(error, '导出失败')
   }
 }
+
+async function printPdf() {
+  if (!current.value) return
+  try {
+    await researchStore.exportPdf(current.value.id)
+    ElMessage.info('已打开打印视图：目标选「另存为 PDF」即可')
+  } catch (error) {
+    notifyError(error, '打开打印视图失败')
+  }
+}
+
+watch(
+  () => current.value?.status,
+  (status) => {
+    if (status === 'ready') ensurePaperMeta(collectEvidenceIds(current.value))
+  },
+)
 
 watch(baseId, loadDocuments)
 
@@ -178,7 +247,9 @@ onUnmounted(() => {
         <template v-if="ready">
           <el-button :icon="Refresh" @click="rerun">重新生成</el-button>
           <el-button :icon="Delete" @click="removeCurrent">删除</el-button>
-          <el-button type="primary" :icon="Download" @click="exportReport">导出报告</el-button>
+          <el-button :icon="Document" @click="download('md')">Markdown</el-button>
+          <el-button :icon="Download" @click="download('docx')">Word</el-button>
+          <el-button type="primary" :icon="Printer" @click="printPdf">PDF</el-button>
         </template>
       </header>
 
