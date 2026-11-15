@@ -24,7 +24,7 @@ const isLogin = computed(() => props.mode !== 'register')
     >
       <header class="flex items-start justify-between gap-6">
         <RouterLink :to="{ name: 'home' }" class="flex items-center gap-3">
-          <span class="auth-logo">R</span>
+          <span class="auth-logo">M</span>
           <span class="leading-tight">
             <span
               class="block text-[15px] font-semibold tracking-tight"
@@ -36,7 +36,7 @@ const isLogin = computed(() => props.mode !== 'register')
               class="mt-1 block font-mono text-[10px] tracking-wide"
               :style="{ color: 'var(--auth-faint)' }"
             >
-              Enterprise Knowledge Assistant
+              Matrix-Scholar RAG Engine
             </span>
           </span>
         </RouterLink>

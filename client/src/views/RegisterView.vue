@@ -92,7 +92,7 @@ async function handleSubmit() {
   <AuthShell mode="register">
     <template #lead>
       <p class="auth-lead">
-        注册后即可创建知识库、上传文档并开始智能问答
+        注册后即可检索文献、建立文献库，并开始论文对比与学术问答
       </p>
     </template>
 
