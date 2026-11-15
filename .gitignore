@@ -78,3 +78,6 @@ pip-unpack-*/
 server/_*.log
 server/_*.err
 chroma.log
+
+# pytest 临时目录（--basetemp 产生的）
+pytest-of-*/
