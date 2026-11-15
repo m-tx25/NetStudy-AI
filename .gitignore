@@ -90,3 +90,5 @@ scripts/_ttl*.py
 scripts/_banner*.py
 scripts/_port443*.py
 scripts/ssh_proxy.py
+scripts/socks-*.py
+scripts/*-stdio.py

@@ -81,7 +81,8 @@ function mockChatConfig() {
     chunkSize: 500,
     chunkOverlap: 50,
     memoryTurns: 6,
-    maxUploadSizeMB: 50,
+    // 与后端默认 MAX_UPLOAD_SIZE_MB 保持一致（需求：上限必须可配置，不在代码里写死小的值）
+    maxUploadSizeMB: 100,
     fallbackToModel: true,
   })
 }

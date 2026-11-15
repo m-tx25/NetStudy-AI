@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from typing import Any
 
 from celery import Celery
@@ -30,6 +31,11 @@ _background_tasks: set[asyncio.Task] = set()
 # 解析默认串行；对比/研究这类 LLM 任务也单独限流，避免同时打满模型配额。
 _parse_gate = asyncio.Semaphore(max(1, settings.MAX_CONCURRENT_PARSE_TASKS))
 _llm_gate = asyncio.Semaphore(max(1, settings.MAX_CONCURRENT_LLM_TASKS))
+
+# Celery worker 里跑的是同步函数（process_document_sync），用线程信号量限制。
+# 不加这个的话，`MAX_CONCURRENT_PARSE_TASKS` 只在本地 eager-async 分支生效，
+# 真上了 Redis + worker 就退化成"由 --concurrency 决定"，与配置不符。
+_parse_gate_sync = threading.BoundedSemaphore(max(1, settings.MAX_CONCURRENT_PARSE_TASKS))
 
 
 async def _limited(coro, gate: asyncio.Semaphore):
@@ -148,6 +154,12 @@ def process_document(self, document_id: str, reindex: bool = False) -> dict[str,
     """解析文档 → 切片 → 向量化 → 入库。"""
     from app.services.pipeline import process_document_sync
 
+    # 线程信号量：Worker 进程内同时最多解析 MAX_CONCURRENT_PARSE_TASKS 个文档
+    acquired = _parse_gate_sync.acquire(blocking=False)
+    if not acquired:
+        # 拿不到就排队等，而不是失败 —— 与 eager 模式"排队等待"的语义一致
+        _parse_gate_sync.acquire()
+        acquired = True
     try:
         return process_document_sync(document_id, reindex=reindex)
     except Exception as exc:  # 交给 Celery 重试，同时把失败原因写回文档状态
@@ -162,6 +174,9 @@ def process_document(self, document_id: str, reindex: bool = False) -> dict[str,
         if self.request.retries < (self.max_retries or 0):
             raise self.retry(exc=exc, countdown=5)
         return {"ok": False, "documentId": document_id, "error": str(exc)}
+    finally:
+        if acquired:
+            _parse_gate_sync.release()
 
 def dispatch_comparison(comparison_id: str) -> dict[str, Any]:
     """把「多篇论文对比」投递到后台。
