@@ -92,3 +92,7 @@ scripts/_port443*.py
 scripts/ssh_proxy.py
 scripts/socks-*.py
 scripts/*-stdio.py
+
+# 个人学习笔记，不入库
+部署实录.md
+八个模块说明.md
