@@ -1,0 +1,31 @@
+# ============================================================================
+# 换行符策略
+#
+# 背景：仓库主要在 Windows 上开发，但服务器是 Linux。
+#   - .sh 脚本如果带 CRLF，Linux 上会报 `bad interpreter: /usr/bin/env bash^M`
+#   - .env / .conf / Dockerfile 同理，可能被解析成带 \r 的值
+# 所以：脚本与配置文件强制 LF，其余保持默认（Windows 工作区仍可用 CRLF）。
+# ============================================================================
+
+*.sh            text eol=lf
+*.bash          text eol=lf
+Dockerfile      text eol=lf
+*.dockerfile    text eol=lf
+*.conf          text eol=lf
+*.service       text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+.env            text eol=lf
+.env.*          text eol=lf
+.gitattributes  text eol=lf
+*.cmd           text eol=crlf
+
+# 二进制文件不做任何换行转换
+*.png           binary
+*.jpg           binary
+*.jpeg          binary
+*.pdf           binary
+*.docx          binary
+*.xlsx          binary
+*.pptx          binary
+*.zip           binary
