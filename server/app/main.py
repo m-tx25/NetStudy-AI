@@ -33,6 +33,7 @@ from app.api import (
     papers,
     reports,
     research,
+    storage,
     teams,
 )
 from app.core.config import settings
@@ -201,6 +202,8 @@ for router in (
     library.router,
     # 论文结构解析结果（M3）
     papers.router,
+    # 存储状态（磁盘/配额/上传限制）
+    storage.router,
     # 团队密钥挂在 /api/teams/{team_id}/keys 下
     keys.team_router,
     # 多篇论文智能对比（模块五）

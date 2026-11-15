@@ -26,6 +26,17 @@ logger = logging.getLogger(__name__)
 # 持有 eager-async 模式下创建的后台任务引用，防止被垃圾回收提前取消
 _background_tasks: set[asyncio.Task] = set()
 
+# 并发闸门：2 核 4GB 的服务器同时解析多个 PDF 会把内存与 CPU 打满，
+# 解析默认串行；对比/研究这类 LLM 任务也单独限流，避免同时打满模型配额。
+_parse_gate = asyncio.Semaphore(max(1, settings.MAX_CONCURRENT_PARSE_TASKS))
+_llm_gate = asyncio.Semaphore(max(1, settings.MAX_CONCURRENT_LLM_TASKS))
+
+
+async def _limited(coro, gate: asyncio.Semaphore):
+    """在信号量内执行协程：超过并发上限的任务排队等待而不是被拒绝。"""
+    async with gate:
+        return await coro
+
 celery_app = Celery(
     "chuangzhibei",
     broker=settings.broker_url,
@@ -80,7 +91,12 @@ def dispatch_process_document(document_id: str, *, reindex: bool = False) -> dic
             # 「Redis + Celery worker」一致的异步语义（前端需要轮询）。
             from app.services.pipeline import process_document_async
 
-            task = asyncio.create_task(process_document_async(document_id, reindex=reindex))
+            task = asyncio.create_task(
+                _limited(
+                    process_document_async(document_id, reindex=reindex),
+                    _parse_gate,
+                )
+            )
             # 持有引用，避免任务被垃圾回收提前取消（asyncio 的已知陷阱）
             _background_tasks.add(task)
             task.add_done_callback(_background_tasks.discard)
@@ -157,7 +173,7 @@ def dispatch_comparison(comparison_id: str) -> dict[str, Any]:
         if settings.CELERY_EAGER_ASYNC:
             from app.services.compare import run_comparison
 
-            task = asyncio.create_task(run_comparison(comparison_id))
+            task = asyncio.create_task(_limited(run_comparison(comparison_id), _llm_gate))
             _background_tasks.add(task)
             task.add_done_callback(_background_tasks.discard)
             return {"queued": True, "mode": "eager-async"}
@@ -190,7 +206,7 @@ def dispatch_research(brief_id: str) -> dict[str, Any]:
         if settings.CELERY_EAGER_ASYNC:
             from app.services.research import run_brief
 
-            task = asyncio.create_task(run_brief(brief_id))
+            task = asyncio.create_task(_limited(run_brief(brief_id), _llm_gate))
             _background_tasks.add(task)
             task.add_done_callback(_background_tasks.discard)
             return {"queued": True, "mode": "eager-async"}

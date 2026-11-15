@@ -7,8 +7,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
+import zipfile
 from pathlib import Path
 
 from fastapi import HTTPException, UploadFile, status
@@ -17,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models import Document, KnowledgeBase, now_utc
+from app.services import storage
 from app.tasks import dispatch_process_document
 from app.utils.ids import new_id
 
@@ -29,7 +32,10 @@ ALLOWED_EXTENSIONS = {
     ".csv", ".json", ".html", ".htm", ".pptx", ".xlsx", ".xls",
 }
 
-CHUNK_SIZE = 1024 * 1024  # 1MB
+# 需要校验 zip/OLE 头的格式
+_ZIP_SUFFIXES = {".docx", ".pptx", ".xlsx"}
+_TEXT_SUFFIXES = {".md", ".markdown", ".txt", ".csv", ".json", ".html", ".htm"}
+_OLE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 
 
 def uploads_dir() -> Path:
@@ -38,6 +44,93 @@ def uploads_dir() -> Path:
         directory = Path.cwd() / directory
     directory.mkdir(parents=True, exist_ok=True)
     return directory
+
+
+def _read_head(path: Path, size: int = 16) -> bytes:
+    with path.open("rb") as handle:
+        return handle.read(size)
+
+
+def _read_tail(path: Path, size: int = 4096) -> bytes:
+    with path.open("rb") as handle:
+        handle.seek(0, 2)
+        length = handle.tell()
+        handle.seek(max(0, length - size))
+        return handle.read()
+
+
+def _pdf_page_count(path: Path) -> int:
+    from pypdf import PdfReader
+
+    try:
+        reader = PdfReader(str(path))
+        if reader.is_encrypted:
+            raise ValueError("PDF 已加密，暂不支持解析，请上传未加密版本")
+        return len(reader.pages)
+    except ValueError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - pypdf 的损坏异常类型不统一
+        raise ValueError(f"PDF 解析失败，文件可能已损坏：{exc}") from exc
+
+
+async def _validate_content(target: Path, suffix: str) -> None:
+    """校验文件格式与完整性（上传完成后调用，失败则删除临时文件）。
+
+    只做「能快速判断、且确实能拦住坏文件」的检查：
+      - PDF：%PDF- 头 + %%EOF 尾 + pypdf 能读出页面且未加密；
+      - docx/pptx/xlsx：必须是合法 zip；
+      - .doc：OLE 复合文档头；
+      - 文本类：不能含 NUL 字节（防止把二进制改名上传）。
+    """
+    head = await asyncio.to_thread(_read_head, target, 16)
+
+    if suffix == ".pdf":
+        if not head.startswith(b"%PDF-"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="文件格式不正确：不是有效的 PDF（缺少 %PDF- 文件头）",
+            )
+        tail = await asyncio.to_thread(_read_tail, target)
+        if b"%%EOF" not in tail:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="PDF 文件不完整（缺少 %%EOF 结束标记），可能上传被中断，请重新上传",
+            )
+        try:
+            pages = await asyncio.to_thread(_pdf_page_count, target)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if pages <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="PDF 中没有可用页面，文件可能已损坏",
+            )
+        return
+
+    if suffix in _ZIP_SUFFIXES:
+        valid = await asyncio.to_thread(zipfile.is_zipfile, target)
+        if not valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"文件格式不正确：{suffix} 不是有效的 Office 压缩包，可能已损坏",
+            )
+        return
+
+    if suffix == ".doc":
+        if not head.startswith(_OLE_MAGIC):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="文件格式不正确：不是有效的 .doc 文件（建议另存为 .docx 后上传）",
+            )
+        return
+
+    if suffix in _TEXT_SUFFIXES:
+        sample = await asyncio.to_thread(_read_head, target, 4096)
+        if b"\x00" in sample:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="文件内容不是文本（包含二进制字节），请检查文件类型",
+            )
 
 
 def _validate_filename(filename: str) -> str:
@@ -54,15 +147,20 @@ def _validate_filename(filename: str) -> str:
 
 
 async def _save_to_disk(file: UploadFile, suffix: str, document_id: str) -> tuple[Path, int, str]:
-    """流式落盘，边写边算 SHA-256，避免大文件二次 IO。"""
+    """流式落盘，边写边算 SHA-256，避免大文件二次 IO。
+
+    分块大小由 `UPLOAD_CHUNK_SIZE_KB` 控制（默认 1MB），内存占用与文件大小无关；
+    超限时立即中止并删除半成品。
+    """
     target = uploads_dir() / f"{document_id}{suffix}"
     written = 0
     limit = settings.max_upload_bytes
+    chunk_size = max(64 * 1024, settings.UPLOAD_CHUNK_SIZE_KB * 1024)
     hasher = hashlib.sha256()
     try:
         with target.open("wb") as sink:
             while True:
-                chunk = await file.read(CHUNK_SIZE)
+                chunk = await file.read(chunk_size)
                 if not chunk:
                     break
                 written += len(chunk)
@@ -71,7 +169,10 @@ async def _save_to_disk(file: UploadFile, suffix: str, document_id: str) -> tupl
                     target.unlink(missing_ok=True)
                     raise HTTPException(
                         status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                        detail=f"文件过大，已超出服务端限制（{settings.MAX_UPLOAD_SIZE_MB}MB）",
+                        detail=(
+                            f"文件过大（{storage.human_bytes(written)}），"
+                            f"单文件上限 {settings.MAX_UPLOAD_SIZE_MB}MB"
+                        ),
                     )
                 hasher.update(chunk)
                 sink.write(chunk)
@@ -110,8 +211,30 @@ async def store_upload(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="未获取到文件名")
     suffix = _validate_filename(filename)
 
+    # 上传前先按声明大小做一次容量检查（避免白传 100MB 再被拒）
+    declared = int(getattr(file, "size", None) or 0)
+    if declared > settings.max_upload_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=(
+                f"文件过大（{storage.human_bytes(declared)}），"
+                f"单文件上限 {settings.MAX_UPLOAD_SIZE_MB}MB"
+            ),
+        )
+    await storage.ensure_upload_capacity(db, user_id=user_id, incoming_bytes=declared)
+
     document_id = new_id("doc")
     target, written, content_hash = await _save_to_disk(file, suffix, document_id)
+
+    # 落盘后再校验格式/完整性，并按实际大小复查配额（Content-Length 可能缺失或不准）
+    try:
+        await _validate_content(target, suffix)
+        await storage.ensure_upload_capacity(
+            db, user_id=user_id, incoming_bytes=written, already_on_disk=True
+        )
+    except Exception:
+        target.unlink(missing_ok=True)
+        raise
 
     existing = (
         await db.execute(
