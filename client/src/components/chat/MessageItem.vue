@@ -7,6 +7,7 @@ import { CopyDocument, Files, Refresh, WarningFilled } from '@element-plus/icons
 import { renderMarkdown } from '@/utils/markdown'
 import { copyText } from '@/utils/clipboard'
 import { formatScore } from '@/utils/format'
+import BrandMark from '@/components/brand/BrandMark.vue'
 
 const router = useRouter()
 
@@ -118,12 +119,7 @@ async function handleContentClick(event) {
         >
           我
         </span>
-        <span
-          v-else
-          class="grid h-7 w-7 place-items-center rounded-full bg-gradient-to-br from-brand-light to-brand text-xs font-bold text-white"
-        >
-          R
-        </span>
+        <BrandMark v-else :size="28" :radius="8" />
       </div>
 
       <!-- 内容 -->

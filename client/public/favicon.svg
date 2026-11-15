@@ -1,5 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="7" fill="#35495e" />
-  <path d="M6 9h20L16 25Z" fill="#42b883" />
-  <path d="M11.6 9h8.8L16 17.4Z" fill="#ffffff" />
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3ecf9a"/>
+      <stop offset="1" stop-color="#128464"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="7.2" fill="url(#g)"/>
+  <rect x="5.80" y="5.80" width="5.40" height="5.40" rx="1.62" fill="#fff" fill-opacity="1"/>
+  <rect x="13.30" y="5.80" width="5.40" height="5.40" rx="1.62" fill="#fff" fill-opacity="0.68"/>
+  <rect x="20.80" y="5.80" width="5.40" height="5.40" rx="1.62" fill="#fff" fill-opacity="1"/>
+  <rect x="5.80" y="13.30" width="5.40" height="5.40" rx="1.62" fill="#fff" fill-opacity="0.68"/>
+  <circle cx="16.00" cy="16.00" r="2.45" fill="#fff"/>
+  <rect x="20.80" y="13.30" width="5.40" height="5.40" rx="1.62" fill="#fff" fill-opacity="0.68"/>
+  <rect x="5.80" y="20.80" width="5.40" height="5.40" rx="1.62" fill="#fff" fill-opacity="1"/>
+  <rect x="13.30" y="20.80" width="5.40" height="5.40" rx="1.62" fill="#fff" fill-opacity="0.68"/>
+  <rect x="20.80" y="20.80" width="5.40" height="5.40" rx="1.62" fill="#fff" fill-opacity="1"/>
 </svg>

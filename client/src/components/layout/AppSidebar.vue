@@ -30,6 +30,7 @@ import { useTheme } from '@/composables/useTheme'
 import { groupByDate } from '@/utils/format'
 import { APP_TITLE, isMockMode } from '@/config'
 import { resetMockDb } from '@/api/mock'
+import BrandMark from '@/components/brand/BrandMark.vue'
 
 const emit = defineEmits(['navigate'])
 
@@ -154,11 +155,7 @@ async function handleCommand(command) {
         class="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition app-hover"
         @click="go('/app/chat')"
       >
-        <span
-          class="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-brand-light to-brand text-[13px] font-bold text-white"
-        >
-          M
-        </span>
+        <BrandMark :size="28" :radius="6" />
         <span class="truncate text-sm font-semibold app-text">
           {{ APP_TITLE }}
         </span>

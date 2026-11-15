@@ -5,6 +5,7 @@ import { ArrowDown, Loading } from '@element-plus/icons-vue'
 import MessageItem from '@/components/chat/MessageItem.vue'
 import { useChatStore } from '@/stores/chat'
 import { useKnowledgeStore } from '@/stores/knowledge'
+import BrandMark from '@/components/brand/BrandMark.vue'
 
 const chatStore = useChatStore()
 const knowledgeStore = useKnowledgeStore()
@@ -93,11 +94,7 @@ function regenerate() {
         v-else-if="!messages.length"
         class="mx-auto flex min-h-full w-full max-w-3xl flex-col items-center justify-center px-4 py-10"
       >
-        <div
-          class="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-brand-light to-brand text-xl font-bold text-white shadow-lg shadow-brand/25"
-        >
-          M
-        </div>
+        <BrandMark :size="48" :radius="11" class="shadow-lg shadow-brand/25" />
         <h1 class="mt-4 text-center text-xl font-semibold app-text md:text-2xl">
           有什么可以帮你的？
         </h1>
