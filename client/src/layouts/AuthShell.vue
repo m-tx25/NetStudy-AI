@@ -4,6 +4,7 @@ import { RouterLink } from 'vue-router'
 import { ArrowRight } from '@element-plus/icons-vue'
 
 import AuthFooter from '@/components/auth/AuthFooter.vue'
+import BrandMark from '@/components/brand/BrandMark.vue'
 import AuthPanel from '@/components/auth/AuthPanel.vue'
 import PolicyDialog from '@/components/auth/PolicyDialog.vue'
 import { APP_TITLE } from '@/config'
@@ -24,7 +25,7 @@ const isLogin = computed(() => props.mode !== 'register')
     >
       <header class="flex items-start justify-between gap-6">
         <RouterLink :to="{ name: 'home' }" class="flex items-center gap-3">
-          <span class="auth-logo">M</span>
+          <BrandMark :size="40" :radius="10" />
           <span class="leading-tight">
             <span
               class="block text-[15px] font-semibold tracking-tight"

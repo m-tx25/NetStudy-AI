@@ -852,19 +852,6 @@ html.dark .auth-shell {
 }
 
 /* ---- 左侧表单区 -------------------------------------------------------- */
-.auth-logo {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  background-image: linear-gradient(140deg, #2fd1a6, var(--auth-blue));
-  color: #ffffff;
-  font-size: 15px;
-  font-weight: 700;
-  box-shadow: 0 10px 20px -12px rgba(15, 155, 122, 0.9);
-}
-
 .auth-back {
   display: inline-flex;
   align-items: center;
