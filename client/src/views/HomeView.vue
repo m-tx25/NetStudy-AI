@@ -419,10 +419,10 @@ const faqs = [
         />
 
         <div
-          class="relative mx-auto grid w-full max-w-6xl items-center gap-10 px-5 py-16 sm:px-8 lg:min-h-[calc(100vh-4rem)] lg:grid-cols-[1.05fr_0.95fr] lg:gap-12 lg:py-14"
+          class="relative mx-auto grid w-full max-w-6xl grid-cols-1 items-center gap-10 px-5 py-16 sm:px-8 lg:min-h-[calc(100vh-4rem)] lg:grid-cols-[1.05fr_0.95fr] lg:gap-12 lg:py-14"
         >
           <!-- 左：文案 -->
-          <div class="reveal">
+          <div class="reveal min-w-0">
             <span
               class="inline-flex items-center gap-2 rounded-full border app-border px-3 py-1.5 text-[11px] app-muted tech-glass"
             >

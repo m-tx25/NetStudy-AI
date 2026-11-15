@@ -18,12 +18,15 @@ import AddMemberForm from '@/components/team/AddMemberForm.vue'
 import TeamKnowledgePanel from '@/components/team/TeamKnowledgePanel.vue'
 import TeamSettingsPanel from '@/components/team/TeamSettingsPanel.vue'
 import { useTeamStore } from '@/stores/team'
+import { useIsMobile } from '@/composables/useMedia'
 import { useUserStore } from '@/stores/user'
 import { formatDateTime } from '@/utils/format'
 import { notifyError, notifySuccess } from '@/utils/notify'
 
 const teamStore = useTeamStore()
 const userStore = useUserStore()
+// 手机上「留言」「提交时间」两列隐藏，否则表格宽度超过屏幕被裁掉
+const { isMobile } = useIsMobile()
 
 const activeTab = ref('mine')
 const keyword = ref('')
@@ -223,15 +226,18 @@ onMounted(async () => {
   <div class="h-full overflow-y-auto scrollbar-thin">
   <div class="mx-auto w-full max-w-6xl px-4 py-6 md:px-6">
     <!-- 头部 -->
-    <header class="mb-5 flex flex-wrap items-center gap-3">
-      <div class="min-w-0 flex-1">
+    <!-- 手机竖排、桌面横排：flex-1 的 basis 是 0，会让标题被压成 1 个字宽 -->
+    <header class="mb-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+      <div class="min-w-0 sm:flex-1">
         <h1 class="text-xl font-semibold app-text">团队</h1>
         <p class="mt-1 text-sm app-muted">
           团队知识库全员共享，成员都能上传；负责人与管理员可审批入队、拉人、配置团队密钥。
         </p>
       </div>
-      <el-button :icon="Link" @click="inviteVisible = true">邀请码加入</el-button>
-      <el-button type="primary" :icon="Plus" @click="openCreate">创建团队</el-button>
+      <div class="flex flex-wrap gap-2">
+        <el-button :icon="Link" @click="inviteVisible = true">邀请码加入</el-button>
+        <el-button type="primary" :icon="Plus" @click="openCreate">创建团队</el-button>
+      </div>
     </header>
 
     <el-tabs v-model="activeTab">
@@ -338,7 +344,7 @@ onMounted(async () => {
 
         <el-table v-else :data="teamStore.myRequests" class="w-full">
           <el-table-column prop="teamName" label="团队" min-width="140" />
-          <el-table-column prop="message" label="留言" min-width="140" show-overflow-tooltip />
+          <el-table-column v-if="!isMobile" prop="message" label="留言" min-width="140" show-overflow-tooltip />
           <el-table-column label="状态" width="100">
             <template #default="{ row }">
               <el-tag
@@ -349,7 +355,7 @@ onMounted(async () => {
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="提交时间" width="170">
+          <el-table-column v-if="!isMobile" label="提交时间" width="170">
             <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
           </el-table-column>
           <el-table-column label="操作" width="100">

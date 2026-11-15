@@ -28,12 +28,13 @@ const tailLength = computed(() => {
 })
 
 const examples = computed(() => {
-  const base = knowledgeStore.bases[0]?.name || '知识库'
+  const base = knowledgeStore.bases[0]?.name || '文献库'
+  // 示例问法对齐学术场景：单篇精读 / 多篇对比 / 概念解释 / 定位原文
   return [
-    { icon: '📄', title: '总结文档要点', text: `请总结「${base}」中的核心内容` },
-    { icon: '🔍', title: '精准检索', text: '系统支持哪些文档格式？上传后多久可以检索？' },
-    { icon: '🧩', title: '对比分析', text: '对比不同文档中对同一问题的描述，指出差异' },
-    { icon: '💻', title: '带代码示例', text: '给出调用流式问答接口的代码示例' },
+    { icon: '📖', title: '单篇精读', text: `总结「${base}」里这几篇论文的核心方法` },
+    { icon: '⚖️', title: '多篇对比', text: '这几篇论文在方法上有什么差异？' },
+    { icon: '💡', title: '概念解释', text: '什么是 Naive RAG？和 Advanced RAG 有什么区别？' },
+    { icon: '🔍', title: '定位原文', text: '哪些论文提到了检索坍塌？在第几页？' },
   ]
 })
 
@@ -95,7 +96,7 @@ function regenerate() {
         <div
           class="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-brand-light to-brand text-xl font-bold text-white shadow-lg shadow-brand/25"
         >
-          R
+          M
         </div>
         <h1 class="mt-4 text-center text-xl font-semibold app-text md:text-2xl">
           有什么可以帮你的？

@@ -287,14 +287,15 @@ function sourceLabel(source) {
 
 <template>
   <div class="mx-auto h-full min-h-0 w-full max-w-6xl overflow-y-auto scrollbar-thin px-4 py-6 md:px-8">
-    <header class="mb-5 flex flex-wrap items-end justify-between gap-3">
-      <div>
+    <!-- 手机竖排、桌面横排；按钮组允许换行，避免 390px 下被挤成一条 -->
+    <header class="mb-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+      <div class="min-w-0">
         <h1 class="text-xl font-semibold app-text">我的文献库</h1>
         <p class="mt-1 text-sm app-muted">
           共 {{ total }} 篇 · 支持收藏、分类、标签、阅读状态与引用导出
         </p>
       </div>
-      <div class="flex gap-2">
+      <div class="flex flex-wrap gap-2">
         <el-button :icon="CollectionTag" @click="newCollection">新建分类</el-button>
         <el-button :icon="Plus" @click="newTag">新建标签</el-button>
         <el-button type="primary" :icon="Upload" :loading="uploading" @click="pickFile">

@@ -193,21 +193,22 @@ onUnmounted(() => {
 <template>
   <div class="h-full overflow-y-auto scrollbar-thin">
     <div class="mx-auto w-full max-w-7xl px-4 py-6 md:px-6">
-      <header class="mb-5 flex flex-wrap items-center gap-3">
-        <div class="min-w-0 flex-1">
+      <!-- 手机竖排、桌面横排：flex-1 的 basis 是 0，会让标题被压成 1 个字宽 -->
+      <header class="mb-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+        <div class="min-w-0 sm:flex-1">
           <h1 class="text-xl font-semibold app-text">成果导出</h1>
           <p class="mt-1 text-sm app-muted">
             生成可直接编辑的学术材料：Markdown / Word 一键下载，PDF 用浏览器打印另存。
             参考文献由真实论文信息生成，不编造 DOI 与卷期。
           </p>
         </div>
-        <template v-if="ready">
+        <div v-if="ready" class="flex flex-wrap gap-2">
           <el-button :icon="Refresh" @click="rerun">重新生成</el-button>
           <el-button :icon="Delete" @click="removeCurrent">删除</el-button>
           <el-button :icon="Document" @click="download('md')">Markdown</el-button>
           <el-button :icon="Download" @click="download('docx')">Word</el-button>
           <el-button type="primary" :icon="Printer" @click="printPdf">PDF</el-button>
-        </template>
+        </div>
       </header>
 
       <div class="grid gap-5 lg:grid-cols-[340px_1fr]">
