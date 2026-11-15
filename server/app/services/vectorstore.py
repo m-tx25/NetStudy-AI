@@ -639,7 +639,12 @@ def search(
             conditions.append({"team_id": {"$in": list(team_ids)}})
         base = conditions[0] if len(conditions) == 1 else {"$or": conditions}
         if document_id:
-            return {"$and": [base, {"document_id": {"$eq": document_id}}]}
+            # 不能用 {"$and": [base, {"document_id": ...}]}：
+            # 本机 Chroma 1.4.4 不支持 $and 操作符，会直接抛
+            # "Expected where value to be a str, int, float, or operator expression"，
+            # 而异常被上层吞掉后表现为「检索到 0 条」，极难排查（实测踩过）。
+            # 文档 id 在引擎层已校验过归属，这里单条件过滤即可。
+            return {"document_id": document_id}
         return base
 
     allowed = set(knowledge_base_ids) if knowledge_base_ids else None

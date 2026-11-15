@@ -266,7 +266,7 @@ const faqs = [
           <span
             class="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-brand-light to-brand text-sm font-bold text-white shadow-lg shadow-brand/25"
           >
-            R
+            M
           </span>
           <span class="hidden text-[15px] font-semibold tracking-tight app-text sm:block">
             {{ APP_TITLE }}

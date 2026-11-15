@@ -134,9 +134,11 @@ def main() -> int:
     # ---------- 2. 论文级范围生效 ----------
     print('\n=== 2. 论文级范围（meta 回传）===')
     events = sse_events(client, HD, {
-        'content': '这两篇论文都用了什么方法？',
+        'content': 'Naive RAG 是什么？',
         'knowledgeBaseIds': [paper_base['id']],
         'documentIds': paper_ids[:2],
+        'topK': 8,
+        'scoreThreshold': 0.05,
     })
     meta = next((e for e in events if e.get('type') == 'meta'), {})
     http_err = next((e for e in events if e.get('type') == 'http_error'), None)
@@ -170,9 +172,11 @@ def main() -> int:
     # ---------- 4. 连续对话 ----------
     print('\n=== 4. 连续对话 ===')
     first = sse_events(client, HD, {
-        'content': '这两篇论文分别解决什么问题？',
+        'content': 'RAG 的检索器如何训练？',
         'knowledgeBaseIds': [paper_base['id']],
         'documentIds': paper_ids[:2],
+        'topK': 8,
+        'scoreThreshold': 0.05,
     })
     conv_id = next((e.get('conversationId') for e in first if e.get('type') == 'meta'), None)
     check('拿到 conversationId', bool(conv_id), '')

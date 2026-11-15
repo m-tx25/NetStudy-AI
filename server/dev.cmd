@@ -206,8 +206,11 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-echo [dev] Reindex OK. Taking a snapshot so a future corruption is cheap to undo ...
-set "DO_SNAPSHOT=1"
+echo [dev] Reindex OK.
+REM Do NOT auto-snapshot here: the snapshot routine stops Chroma, and this Chroma
+REM build never persists the HNSW index on shutdown - stopping it right after
+REM reindex destroys the very index we just built. Use --snapshot explicitly
+REM when you really want a copy, at the cost of having to reindex afterwards.
 echo.
 
 :maybe_snapshot
@@ -227,11 +230,8 @@ if errorlevel 8 (
     echo [dev] Snapshot saved.
 )
 
-if defined STOP_AFTER_SNAPSHOT (
-    echo [dev] Done - snapshot only, nothing else started.
-    exit /b 0
-)
-
+REM ?????? Chroma ????????? sqlite ???????
+REM ?????????????????????--snapshot ????????????
 echo [dev] Restarting Chroma ...
 start "chroma" /b "%CHROMA_EXE%" run --path "%DATA_DIR%" --port %CHROMA_PORT% > "%CHROMA_LOG%" 2>&1
 set /a tries2=0
@@ -248,6 +248,11 @@ goto snap_wait
 :snap_ok
 echo [dev] Chroma ready again: http://127.0.0.1:%CHROMA_PORT%
 echo.
+
+if defined STOP_AFTER_SNAPSHOT (
+    echo [dev] Done - snapshot only, Chroma left running.
+    exit /b 0
+)
 
 :backend
 echo [dev] Starting backend: http://127.0.0.1:%BACKEND_PORT%/api
