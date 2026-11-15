@@ -505,7 +505,7 @@ const faqs = [
                     class="max-w-[85%] rounded-2xl rounded-br-md px-4 py-2.5 text-[13px] leading-6 text-white"
                     style="background-image: linear-gradient(135deg, #25c39c, #0f9b7a)"
                   >
-                    这两篇综述分别在讲什么？
+                    这两篇文献分别在讲什么？
                   </p>
                 </div>
 
