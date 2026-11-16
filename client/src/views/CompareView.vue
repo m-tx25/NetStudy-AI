@@ -54,6 +54,8 @@ const confidenceText = {
 
 /** 列名：优先用卡片里的标题（短），没有就退回文件名 */
 function paperLabel(documentId) {
+  // 防御：时间轴/空白分析里可能没有归属论文，别让一个空 id 把整页打崩
+  if (!documentId) return '早期工作'
   const meta = paperMeta.value[documentId]
   if (meta?.title) return meta.title.split(':')[0].slice(0, 30)
   const doc = documents.value.find((item) => item.id === documentId)
@@ -462,7 +464,13 @@ onUnmounted(() => {
                   {{ item.year || '—' }}
                 </span>
                 <p class="min-w-0 flex-1 text-xs leading-6 app-text">
-                  <span class="font-medium">{{ paperLabel(item.documentId) }}</span>
+                  <!--
+                    时间轴条目不一定有 documentId：模型给的「早期/背景」节点只是年份+事件，
+                    没有对应论文。以前无条件调 paperLabel(undefined) 会抛
+                    `Cannot read properties of undefined (reading 'slice')`，
+                    整个对比页直接白屏 —— 线上真实踩到过。
+                  -->
+                  <span v-if="item.documentId" class="font-medium">{{ paperLabel(item.documentId) }}</span>
                   ：{{ item.label }}（{{ item.method }}）
                 </p>
               </div>
