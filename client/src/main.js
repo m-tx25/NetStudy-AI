@@ -15,6 +15,7 @@ import App from './App.vue'
 import router from './router'
 import { applyStoredTheme } from '@/composables/useTheme'
 import { isMockMode } from '@/config'
+import { installErrorHandling } from '@/utils/errors'
 import { registerServiceWorker } from '@/utils/pwa'
 
 applyStoredTheme()
@@ -39,5 +40,7 @@ if (isMockMode) {
 }
 
 registerServiceWorker()
+
+installErrorHandling(app, router)
 
 app.mount('#app')
