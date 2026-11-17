@@ -150,7 +150,7 @@ Chroma 的元数据里有两个页码，别搞混：
 
 ```powershell
 $enc = New-Object System.Text.UTF8Encoding($false)   # false = 不加 BOM
-[System.IO.File]::WriteAllText('E:\传智杯web\rag\.env', "ZHIPUAI_API_KEY=你的key`n", $enc)
+[System.IO.File]::WriteAllText('<项目根>ag\.env', "ZHIPUAI_API_KEY=你的key`n", $enc)
 ```
 
 `build_db.py` / `query_db.py` 都已用 `utf-8-sig` 解码并自行解析，能兼容带 BOM 的文件，
