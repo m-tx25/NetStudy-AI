@@ -32,9 +32,9 @@ os.environ['NO_PROXY'] = ','.join(
 BASE = os.environ.get('API_BASE', 'http://127.0.0.1:3000/api')
 
 DEFAULT_PDFS = [
-    r'C:\Users\admin\Downloads\2005.11401v4.pdf',
-    r'C:\Users\admin\Downloads\2312.10997v5.pdf',
-    r'C:\Users\admin\Downloads\2410.12837v1.pdf',
+    r'<你的下载目录>/2005.11401v4.pdf',
+    r'<你的下载目录>/2312.10997v5.pdf',
+    r'<你的下载目录>/2410.12837v1.pdf',
 ]
 
 passed = 0
