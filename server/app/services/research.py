@@ -272,6 +272,18 @@ def _normalize_novelty(data: Any, profiles: list[PaperProfile]) -> dict[str, Any
         item["confidence"] = confidence if confidence in ("low", "medium", "high") else "low"
         # 创新性判断永远只能算假设，不允许被标成 evidence
         item["kind"] = "hypothesis"
+
+    # 模型很爱在正文里直接写 documentId（`doc_4vzampyjkyna`），对用户毫无意义。
+    # 方向和问题那两段早就做了替换，但覆盖分析/创新空间这两段漏了，界面上会露出原始 id。
+    for item in coverage:
+        for key in ("aspect", "covered"):
+            if item.get(key):
+                item[key] = compare._humanize_refs(item[key], profiles)
+    for item in openings:
+        for key in ("opening", "why_open"):
+            if item.get(key):
+                item[key] = compare._humanize_refs(item[key], profiles)
+
     return {
         "coverage": coverage,
         "openings": openings,
@@ -557,6 +569,11 @@ async def run_brief(brief_id: str) -> None:
                     data.get("further_reading"), usable, default_kind="suggestion"
                 ),
             }
+            # 相关工作的主题/小结里同样会写 documentId，一并换成人能读的标题
+            for item in related["groups"]:
+                for key in ("theme", "summary", "note"):
+                    if item.get(key):
+                        item[key] = compare._humanize_refs(item[key], usable)
             related_docs = await _local_related_docs(db, [p.document_id for p in usable])
             await _save(
                 db,

@@ -146,6 +146,8 @@ export async function launchBrowser({ debugPort = 9333, windowSize = '1440,900' 
       // 系统代理（如 Clash）会把对公网 IP 的访问拦成 ERR_BLOCKED_BY_CLIENT，
       // 截图线上站点时必须直连，否则拿到的是浏览器错误页
       '--no-proxy-server',
+      // 允许外部追加参数（排查浏览器策略拦截时用）
+      ...(process.env.CDP_EXTRA_ARGS ? process.env.CDP_EXTRA_ARGS.split(' ') : []),
       '--hide-scrollbars',
       `--window-size=${windowSize}`,
       `--remote-debugging-port=${debugPort}`,
